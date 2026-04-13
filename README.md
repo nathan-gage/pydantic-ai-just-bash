@@ -6,7 +6,11 @@
 
 `pydantic-ai-just-bash` is a small extension package for [Pydantic AI](https://ai.pydantic.dev/) that gives an agent a persistent [`just-py-bash`](https://github.com/nathan-gage/just-py-bash) shell.
 
-It adds a `just_bash` tool and binds wrapped Pydantic AI tools into that shell as commands, so a model can mix shell workflows with normal tool calls while keeping a long-lived virtual filesystem for the lifetime of the agent run.
+The extension exposes a `bash` tool plus helper tools like `bash_list_tools`, `bash_search_tools`, and `bash_describe_tool`, and binds wrapped Pydantic AI tools into that shell as commands.
+
+By default, wrapped tools stay directly visible to the model as normal Pydantic AI tools. If you want a shell-only interface, set `expose_wrapped_tools=False`.
+
+It is designed to let an agent mix shell workflows with normal Pydantic AI tool calls while keeping a long-lived virtual filesystem for the lifetime of the agent run.
 
 ## Why use it?
 
@@ -56,32 +60,32 @@ def stock_lookup(symbol: str) -> str:
     return f'{symbol}=150.00'
 ```
 
-Inside `just_bash`, the model can do things like:
+Inside `bash`, the model can do things like:
 
 ```bash
-pai_list_tools
+bash_list_tools
 get_weather Paris
 printf 'draft note' > note.txt
 cat note.txt
-pai_search_tools stock
+bash_search_tools stock
 stock_lookup AAPL
 ```
 
-The shell session and virtual filesystem persist across `just_bash` calls for the lifetime of the agent run.
+The shell session and virtual filesystem persist across `bash` calls for the lifetime of the agent run.
 
 ## API overview
 
 ### `JustBash`
 
-Use `JustBash` as an agent capability. It wraps the assembled toolset and injects a `just_bash` tool.
+Use `JustBash` as an agent capability. It wraps the assembled toolset and injects a `bash` tool plus bash helper tools.
 
 ```python
 from pydantic_ai_just_bash import JustBash
 
 capability = JustBash(
-    tool_name='just_bash',
+    tool_name='bash',
     command_prefix='',
-    helper_prefix='pai_',
+    helper_prefix='bash_',
     python=True,
 )
 ```
@@ -92,8 +96,11 @@ Common configuration knobs include:
 - `command_prefix`
 - `helper_prefix`
 - `exposed_tools`
+- `expose_wrapped_tools`
 - `instructions`
-- `files`, `env`, `cwd`, `fs`
+- `help_flag_name`
+- `rename_help_argument`
+- `files`, `env`, `cwd`, `fs`, `execution_limits`
 - `python`, `javascript`, `commands`, `network`, `process_info`
 - `node_command`, `js_entry`, `package_json`
 
@@ -116,14 +123,15 @@ def echo(text: str) -> str:
 agent = Agent('openai:gpt-5.2', toolsets=[JustBashToolset(base)])
 ```
 
-### `JustBashExecutionResult`
+### Result models
 
-The `just_bash` tool returns a structured result object with:
+The package exports structured result models for the public helper tools:
 
-- `stdout`
-- `stderr`
-- `exit_code`
-- `ok`
+- `BashExecutionResult`
+- `BashListToolsResult`
+- `BashSearchToolsResult`
+- `BashDescribeToolResult`
+- `BashCommandInfo`
 
 ## Agent specs and YAML
 
@@ -133,8 +141,8 @@ The `just_bash` tool returns a structured result object with:
 model: test
 capabilities:
   - JustBash:
-      tool_name: just_bash
-      helper_prefix: pai_
+      tool_name: bash
+      helper_prefix: bash_
       python: true
       files:
         /workspace/seed.txt: hello from spec
@@ -152,10 +160,11 @@ uv add 'pydantic-ai-just-bash[spec]'
 
 The current spec-safe surface includes the public `JustBash` fields, including:
 
-- shell naming/config fields like `tool_name`, `command_prefix`, `helper_prefix`, and `instructions`
-- runtime/session fields like `env`, `cwd`, `python`, `javascript`, `commands`, `network`, `process_info`, `node_command`, `js_entry`, and `package_json`
+- shell naming/config fields like `tool_name`, `command_prefix`, `helper_prefix`, `instructions`, `help_flag_name`, and `expose_wrapped_tools`
+- runtime/session fields like `env`, `cwd`, `execution_limits`, `python`, `javascript`, `commands`, `network`, `process_info`, `node_command`, `js_entry`, and `package_json`
 - filesystem configuration via `files` and `fs`
 - spec-friendly file values such as plain text/bytes, `FileInit`, and `LazyFile` with a static `provider` value
+- string-based `rename_help_argument` values
 
 ### Python-only configuration surface
 
@@ -165,6 +174,7 @@ The current Python-only surface includes:
 
 - callable `exposed_tools` selectors
 - callback-based lazy file providers, either passed directly or wrapped in `LazyFile(...)`
+- callable `rename_help_argument` values
 
 For example:
 
@@ -181,35 +191,79 @@ cap = JustBash(
 
 That callable form is supported when you configure `JustBash(...)` in Python, but it is not spec/YAML-serializable.
 
-## Shell helpers
+## Public helper tools
 
-By default the shell gets these helper commands:
+At the agent level, the wrapper exposes:
 
-| Command | Purpose |
-| --- | --- |
-| `pai_list_tools` | List currently visible shell-bound tools |
-| `pai_describe_tool <tool-or-command>` | Show tool metadata and argument schema |
-| `pai_call_tool <tool-or-command> --json '{...}'` | Call a bound tool explicitly with JSON |
-| `pai_search_tools <keywords>` | Discover deferred or hidden tools by keyword |
+- `bash`
+- `bash_list_tools`
+- `bash_search_tools`
+- `bash_describe_tool`
+
+Inside the shell, the same helper concepts are available as commands:
+
+- `bash_list_tools`
+- `bash_describe_tool <tool-or-command>`
+- `bash_call_tool <tool-or-command> --json '{...}'`
+- `bash_search_tools <keywords>`
+
+## Tool visibility model
+
+Wrapped tools remain directly visible to the model by default, so an agent can either call them normally or use them through `bash`.
+
+If you want the model to go through the shell interface only, set:
+
+```python
+JustBash(expose_wrapped_tools=False)
+```
+
+In shell-only mode, the model still sees `bash`, `bash_list_tools`, `bash_search_tools`, and `bash_describe_tool`, but the wrapped tools themselves are omitted from the public agent tool list.
 
 ## Argument binding
 
-Wrapped tools are still validated by Pydantic AI. The shell adapter accepts a few convenient input forms:
+Wrapped tools are still validated by Pydantic AI, but the shell adapter tries to behave like a small CLI layer first:
 
 | Form | Example |
 | --- | --- |
-| JSON object | `my_tool --json '{"a": 1, "b": 2}'` |
-| Named flags | `my_tool --a 1 --b 2` |
+| Named flags for simple values | `my_tool --a 1 --b 2` |
+| Booleans with `--flag` / `--no-flag` | `my_tool --verbose --no-cache` |
 | Single positional value for single-argument tools | `get_weather Paris` |
+| `--` to stop option parsing | `show_value -- --help` |
+| JSON object escape hatch | `my_tool --json '{"a": 1, "b": 2}'` |
 | JSON via stdin | `echo '{"a": 1, "b": 2}' | my_tool --stdin-json` |
 
-Use `--help` on a bound command, or `pai_describe_tool`, to inspect the generated signature and JSON schema.
+Use shell-style flags for simple scalar values. Prefer `--json` or `--stdin-json` for objects, arrays, or anything that becomes awkward to quote safely.
+
+When a command has multiple parameters, bare positional input is rejected with a CLI-style error that points back to `--help` and `--json`.
+
+Use `--help` or `-h` on a bound command, or `bash_describe_tool`, to inspect generated command help, rendered signatures, renamed arguments, and JSON schema.
+
+## Help flag behavior
+
+By default, shell-exposed commands reserve `--help` and `-h` for generated command help.
+
+If a wrapped tool has a real argument named `help`, wrapper creation fails by default with a configuration error. This makes the collision explicit instead of silently changing command behavior.
+
+You can override that behavior with:
+
+- `help_flag_name='usage'` to reserve a different help flag instead of `--help`
+- `rename_help_argument=...` to rename the wrapped tool's conflicting shell argument
+
+For example:
+
+```python
+JustBash(rename_help_argument='{tool_name}_{arg_name}')
+```
+
+would expose a tool argument named `help` as `--<tool_name>_help` in the shell, and generated help text will explain that rename explicitly.
 
 ## Behavior notes
 
-- The shell session is persistent for a run, so virtual filesystem changes carry across `just_bash` calls.
-- The set of bound commands is captured on first shell use in a run. If wrapped tools change dynamically and you want a fresh command set, call `just_bash(..., reset_session=True)`.
-- Deferred tools are hidden in the shell until discovered with `pai_search_tools`.
+- The shell session is persistent for a run, so virtual filesystem changes carry across `bash` calls.
+- Wrapped tools stay directly visible by default; set `expose_wrapped_tools=False` for shell-only mode.
+- The set of bound commands is captured on first shell use in a run. If wrapped tools change dynamically and you want a fresh command set, call `bash(..., reset_session=True)`.
+- Deferred tools are hidden in the shell until discovered with `bash_search_tools`.
+- Shell command failures are formatted as CLI-style stderr messages instead of leaking raw framework internals where possible.
 - Direct shell commands return the tool result. If a wrapped tool returns `ToolReturn`, the shell uses its `return_value`.
 
 ## Development
