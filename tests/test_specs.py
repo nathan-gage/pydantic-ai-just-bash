@@ -13,6 +13,27 @@ from pydantic_ai.capabilities._ordering import collect_leaves
 
 from pydantic_ai_just_bash import JustBash
 
+EXECUTION_LIMITS = ExecutionLimits(
+    max_call_depth=None,
+    max_command_count=None,
+    max_loop_iterations=None,
+    max_awk_iterations=None,
+    max_sed_iterations=None,
+    max_jq_iterations=None,
+    max_sqlite_timeout_ms=None,
+    max_python_timeout_ms=None,
+    max_js_timeout_ms=None,
+    max_glob_operations=None,
+    max_string_length=None,
+    max_array_elements=None,
+    max_heredoc_size=None,
+    max_substitution_depth=None,
+    max_brace_expansion_results=None,
+    max_output_size=4096,
+    max_file_descriptors=None,
+    max_source_depth=None,
+)
+
 ALL_SPEC_ARGS: dict[str, Any] = {
     'tool_name': 'shellbox',
     'command_prefix': 'cmd_',
@@ -30,7 +51,7 @@ ALL_SPEC_ARGS: dict[str, Any] = {
     'env': {'MODE': 'test', 'DEBUG': '1'},
     'cwd': '/workspace',
     'fs': InMemoryFs(files={'/workspace/from_fs.txt': 'from fs\n'}),
-    'execution_limits': ExecutionLimits(max_output_size=4096),
+    'execution_limits': EXECUTION_LIMITS,
     'python': True,
     'javascript': JavaScriptConfig(bootstrap='globalThis.answer = 42;'),
     'commands': ['echo', 'cat'],

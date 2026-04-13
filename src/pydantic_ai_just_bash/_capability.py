@@ -9,8 +9,9 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.toolsets import AbstractToolset
 
-from ._toolset import HelpArgumentRenamer, JustBashToolset
+from ._toolset import JustBashToolset
 from ._types import (
+    HelpArgumentRenamer,
     JustBashFileSystemConfig,
     JustBashInitialFileValue,
     JustBashToolSelector,

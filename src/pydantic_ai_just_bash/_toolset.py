@@ -34,6 +34,7 @@ from ._types import (
 _ANY_JSON_TA = TypeAdapter(Any)
 _MAX_SEARCH_RESULTS = 10
 
+
 class BashExecutionResult(BaseModel):
     stdout: str = ''
     stderr: str = ''
