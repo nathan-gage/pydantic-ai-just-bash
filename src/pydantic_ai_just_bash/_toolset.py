@@ -1,21 +1,32 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Generic, cast
+from typing import Any, Generic, TypeAlias, cast
 
-from just_bash import AsyncBash, AsyncCustomCommandContext
-from pydantic import BaseModel, TypeAdapter
+from just_bash import (
+    AsyncBash,
+    AsyncCustomCommandContext,
+    AsyncCustomCommands,
+    JavaScriptConfig,
+    NetworkConfig,
+    ProcessInfo,
+)
+from pydantic import BaseModel
 from pydantic_ai import Tool
 from pydantic_ai._run_context import AgentDepsT, RunContext
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import InstructionPart, ToolCallPart, ToolReturn
 from pydantic_ai.tool_manager import ToolManager
-from pydantic_ai.tools import ToolDefinition, ToolSelector, matches_tool_selector
-from pydantic_ai.toolsets import AbstractToolset, ToolsetTool
+from pydantic_ai.tools import ObjectJsonSchema, ToolDefinition, matches_tool_selector
+from pydantic_ai.toolsets import AbstractToolset, ToolsetTool, WrapperToolset
+from pydantic_core import to_json
+from typing_extensions import TypedDict
 
-_ANY_JSON_TA = TypeAdapter(Any)
+from ._types import JustBashFileSystemConfig, JustBashInitialFileValue, JustBashToolSelector
+
+_ShellToolArgs: TypeAlias = dict[str, Any]
 _MAX_SEARCH_RESULTS = 10
 
 
@@ -26,11 +37,22 @@ class JustBashExecutionResult(BaseModel):
     ok: bool
 
 
-@dataclass
-class _ShellSearchResult:
+class _CustomCommandResult(TypedDict):
+    stdout: str
+    stderr: str
+    exit_code: int
+
+
+_CustomCommandHandler: TypeAlias = Callable[
+    [list[str], AsyncCustomCommandContext],
+    Coroutine[Any, Any, _CustomCommandResult],
+]
+
+
+class _ShellSearchResult(TypedDict):
     tool_name: str
-    command: str | None = None
-    description: str | None = None
+    command: str | None
+    description: str | None
 
 
 @dataclass
@@ -56,7 +78,7 @@ class _ShellState(Generic[AgentDepsT]):
     search_index: list[_SearchIndexEntry]
 
 
-class JustBashToolset(AbstractToolset[AgentDepsT]):
+class JustBashToolset(WrapperToolset[AgentDepsT]):
     """Wrap a toolset and expose a persistent just-bash executor as a tool.
 
     The `just_bash` tool executes scripts inside a long-lived just-bash session.
@@ -72,17 +94,17 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         tool_name: str = 'just_bash',
         command_prefix: str = '',
         helper_prefix: str = 'pai_',
-        exposed_tools: ToolSelector[AgentDepsT] = 'all',
+        exposed_tools: JustBashToolSelector[AgentDepsT] = 'all',
         instructions: str | None = None,
-        files: Mapping[str, Any] | None = None,
+        files: Mapping[str, JustBashInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
         cwd: str | None = None,
-        fs: Any = None,
+        fs: JustBashFileSystemConfig | None = None,
         python: bool = False,
-        javascript: bool | Any = False,
+        javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
-        network: Any = None,
-        process_info: Any = None,
+        network: NetworkConfig | None = None,
+        process_info: ProcessInfo | None = None,
         node_command: Sequence[str] | None = None,
         js_entry: str | None = None,
         package_json: str | None = None,
@@ -118,14 +140,6 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             sequential=True,
             include_return_schema=True,
         )
-
-    @property
-    def id(self) -> str | None:
-        return None
-
-    @property
-    def label(self) -> str:
-        return f'{self.__class__.__name__}({self.wrapped.label})'
 
     async def for_run(self, ctx: RunContext[AgentDepsT]) -> AbstractToolset[AgentDepsT]:
         new_wrapped = await self.wrapped.for_run(ctx)
@@ -198,10 +212,10 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return await self._run_just_bash(ctx, **tool_args)
         return await self.wrapped.call_tool(name, tool_args, ctx, tool)
 
-    def apply(self, visitor: Any) -> None:
-        self.wrapped.apply(visitor)
-
-    def visit_and_replace(self, visitor: Any) -> AbstractToolset[AgentDepsT]:
+    def visit_and_replace(
+        self,
+        visitor: Callable[[AbstractToolset[AgentDepsT]], AbstractToolset[AgentDepsT]],
+    ) -> AbstractToolset[AgentDepsT]:
         return self.__class__(
             wrapped=self.wrapped.visit_and_replace(visitor),
             tool_name=self.tool_name,
@@ -333,8 +347,8 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             self._bash = None
             await bash.close()
 
-    def _custom_commands(self) -> dict[str, Any]:
-        commands: dict[str, Any] = {
+    def _custom_commands(self) -> AsyncCustomCommands:
+        commands: dict[str, _CustomCommandHandler] = {
             self._helper_name('list_tools'): self._cmd_list_tools,
             self._helper_name('describe_tool'): self._cmd_describe_tool,
             self._helper_name('call_tool'): self._cmd_call_tool,
@@ -342,10 +356,10 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         }
         for command_name in sorted(self._bound_tool_commands):
             commands[command_name] = self._make_bound_tool_command(command_name)
-        return commands
+        return cast(AsyncCustomCommands, commands)
 
-    def _make_bound_tool_command(self, command_name: str) -> Any:
-        async def _command(args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
+    def _make_bound_tool_command(self, command_name: str) -> _CustomCommandHandler:
+        async def _command(args: list[str], ctx: AsyncCustomCommandContext) -> _CustomCommandResult:
             return await self._cmd_bound_tool(command_name, args, ctx)
 
         return _command
@@ -355,7 +369,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         command_name: str,
         args: list[str],
         ctx: AsyncCustomCommandContext,
-    ) -> dict[str, Any]:
+    ) -> _CustomCommandResult:
         shell_state = self._require_shell_state()
         tool_name = shell_state.command_to_tool.get(command_name)
         if tool_name is None:
@@ -366,7 +380,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             )
         return await self._invoke_tool(tool_name, command_name, args, ctx)
 
-    async def _cmd_call_tool(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
+    async def _cmd_call_tool(self, args: list[str], ctx: AsyncCustomCommandContext) -> _CustomCommandResult:
         if not args:
             return self._error_result(
                 f'Usage: {self._helper_name("call_tool")} <tool-or-command> [tool args...]',
@@ -382,7 +396,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         command_name = self._tool_command_name(tool_name)
         return await self._invoke_tool(tool_name, command_name, args[1:], ctx)
 
-    async def _cmd_describe_tool(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
+    async def _cmd_describe_tool(self, args: list[str], ctx: AsyncCustomCommandContext) -> _CustomCommandResult:
         del ctx
         if len(args) != 1:
             return self._error_result(
@@ -406,7 +420,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             'exit_code': 0,
         }
 
-    async def _cmd_list_tools(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
+    async def _cmd_list_tools(self, args: list[str], ctx: AsyncCustomCommandContext) -> _CustomCommandResult:
         del args, ctx
         shell_state = self._require_shell_state()
         visible_commands = sorted(
@@ -432,7 +446,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             stdout += '\n'
         return {'stdout': stdout, 'stderr': '', 'exit_code': 0}
 
-    async def _cmd_search_tools(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
+    async def _cmd_search_tools(self, args: list[str], ctx: AsyncCustomCommandContext) -> _CustomCommandResult:
         shell_state = self._require_shell_state()
         if not shell_state.search_index:
             return {'stdout': 'No hidden tools are available.\n', 'stderr': '', 'exit_code': 0}
@@ -446,17 +460,15 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
 
         terms = keywords.lower().split()
         matches: list[_ShellSearchResult] = []
-        discovered_now: list[str] = []
         for entry in shell_state.search_index:
             if any(term in entry.searchable_text for term in terms):
                 self._discovered_tools.add(entry.tool_name)
-                discovered_now.append(entry.tool_name)
                 matches.append(
-                    _ShellSearchResult(
-                        tool_name=entry.tool_name,
-                        command=entry.command_name if entry.command_name in self._bound_tool_commands else None,
-                        description=entry.description,
-                    )
+                    {
+                        'tool_name': entry.tool_name,
+                        'command': entry.command_name if entry.command_name in self._bound_tool_commands else None,
+                        'description': entry.description,
+                    }
                 )
                 if len(matches) >= _MAX_SEARCH_RESULTS:
                     break
@@ -469,23 +481,12 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             }
 
         hint = ''
-        if any(match.command is None for match in matches):
+        if any(match['command'] is None for match in matches):
             hint = (
                 f'\nUse {self._helper_name("call_tool")} <tool_name> --json {{...}} '
                 'for tools without a direct shell command in the current session.'
             )
-        payload = cast(
-            Any,
-            [
-                {
-                    'tool_name': match.tool_name,
-                    'command': match.command,
-                    'description': match.description,
-                }
-                for match in matches
-            ],
-        )
-        stdout = _ANY_JSON_TA.dump_json(payload).decode() + hint
+        stdout = self._serialize_json(matches) + hint
         return {'stdout': stdout, 'stderr': '', 'exit_code': 0}
 
     async def _invoke_tool(
@@ -494,7 +495,7 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         command_name: str,
         args: list[str],
         ctx: AsyncCustomCommandContext,
-    ) -> dict[str, Any]:
+    ) -> _CustomCommandResult:
         shell_state = self._require_shell_state()
         tool = (shell_state.tool_manager.tools or {}).get(tool_name)
         if tool is None:
@@ -529,14 +530,14 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             'exit_code': 0,
         }
 
-    def _bind_command_args(self, tool_def: ToolDefinition, args: list[str], stdin: str) -> dict[str, Any]:
+    def _bind_command_args(self, tool_def: ToolDefinition, args: list[str], stdin: str) -> _ShellToolArgs:
         properties = self._schema_properties(tool_def)
         if not properties:
             if args:
                 raise ValueError(f'{tool_def.name!r} does not take any arguments.')
             return {}
 
-        parsed: dict[str, Any] = {}
+        parsed: _ShellToolArgs = {}
         positionals: list[str] = []
         json_payload: str | None = None
         stdin_json = False
@@ -647,14 +648,17 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         )
         return '\n'.join(lines) + '\n'
 
-    def _serialize_tool_result(self, result: Any) -> str:
+    def _serialize_tool_result(self, result: object) -> str:
         if isinstance(result, ToolReturn):
             result = result.return_value
         if result is None:
             return ''
         if isinstance(result, str):
             return result
-        return _ANY_JSON_TA.dump_json(result).decode()
+        return self._serialize_json(result)
+
+    def _serialize_json(self, value: object) -> str:
+        return to_json(value, serialize_unknown=True).decode()
 
     def _tool_description(self) -> str:
         return (
@@ -740,9 +744,16 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             package_json=self.package_json,
         )
 
-    def _schema_properties(self, tool_def: ToolDefinition) -> dict[str, dict[str, Any]]:
-        properties = tool_def.parameters_json_schema.get('properties') or {}
-        return cast(dict[str, dict[str, Any]], properties)
+    def _schema_properties(self, tool_def: ToolDefinition) -> dict[str, ObjectJsonSchema]:
+        properties = tool_def.parameters_json_schema.get('properties')
+        if not isinstance(properties, dict):
+            return {}
+
+        result: dict[str, ObjectJsonSchema] = {}
+        for key, value in properties.items():
+            if isinstance(key, str) and isinstance(value, dict):
+                result[key] = value
+        return result
 
     def _split_flag(self, token: str) -> tuple[str, str | None]:
         name = token[2:]
@@ -751,19 +762,19 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return flag_name, value
         return name, None
 
-    def _resolve_flag_name(self, flag_name: str, properties: Mapping[str, Any]) -> str:
+    def _resolve_flag_name(self, flag_name: str, properties: Mapping[str, ObjectJsonSchema]) -> str:
         candidates = [flag_name, flag_name.replace('-', '_'), flag_name.replace('_', '-')]
         for candidate in candidates:
             if candidate in properties:
                 return candidate
         raise ValueError(f'Unknown argument --{flag_name}.')
 
-    def _coerce_flag_value(self, prop_schema: Mapping[str, Any], raw_value: str) -> Any:
+    def _coerce_flag_value(self, prop_schema: ObjectJsonSchema, raw_value: str) -> Any:
         if self._expects_json_payload(prop_schema):
             return json.loads(raw_value)
         return raw_value
 
-    def _coerce_single_argument(self, prop_schema: Mapping[str, Any], values: list[str]) -> Any:
+    def _coerce_single_argument(self, prop_schema: ObjectJsonSchema, values: list[str]) -> Any:
         if self._is_array_schema(prop_schema):
             return values
         if self._expects_json_payload(prop_schema) and len(values) == 1:
@@ -774,39 +785,39 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return values[0]
         return values
 
-    def _coerce_stdin_argument(self, prop_schema: Mapping[str, Any], stdin: str) -> Any:
+    def _coerce_stdin_argument(self, prop_schema: ObjectJsonSchema, stdin: str) -> Any:
         if self._expects_json_payload(prop_schema):
             return json.loads(stdin)
         if self._is_array_schema(prop_schema):
             return [line for line in stdin.splitlines() if line]
         return stdin
 
-    def _parse_json_object(self, payload: str) -> dict[str, Any]:
+    def _parse_json_object(self, payload: str) -> _ShellToolArgs:
         try:
             parsed = json.loads(payload)
         except json.JSONDecodeError as exc:
             raise ValueError(f'Invalid JSON payload: {exc.msg}') from exc
         if not isinstance(parsed, dict):
             raise ValueError('Expected a JSON object.')
-        return cast(dict[str, Any], parsed)
+        return parsed
 
-    def _expects_json_payload(self, schema: Mapping[str, Any]) -> bool:
+    def _expects_json_payload(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type in {'object', 'array'}:
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(
-                self._expects_json_payload(cast(Mapping[str, Any], item)) for item in variants
-            ):
-                return True
+            if isinstance(variants, list):
+                for item in variants:
+                    if isinstance(item, dict) and self._expects_json_payload(item):
+                        return True
         return False
 
-    def _is_array_schema(self, schema: Mapping[str, Any]) -> bool:
+    def _is_array_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         return schema_type == 'array'
 
-    def _is_string_schema(self, schema: Mapping[str, Any]) -> bool:
+    def _is_string_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type == 'string':
             return True
@@ -814,17 +825,17 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return True
         return False
 
-    def _is_boolean_schema(self, schema: Mapping[str, Any]) -> bool:
+    def _is_boolean_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type == 'boolean':
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(
-                self._is_boolean_schema(cast(Mapping[str, Any], item)) for item in variants
-            ):
-                return True
+            if isinstance(variants, list):
+                for item in variants:
+                    if isinstance(item, dict) and self._is_boolean_schema(item):
+                        return True
         return False
 
-    def _error_result(self, message: str, *, exit_code: int) -> dict[str, Any]:
+    def _error_result(self, message: str, *, exit_code: int) -> _CustomCommandResult:
         return {'stdout': '', 'stderr': f'{message}\n', 'exit_code': exit_code}
