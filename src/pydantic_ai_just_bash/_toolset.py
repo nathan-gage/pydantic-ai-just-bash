@@ -13,21 +13,20 @@ from just_bash import (
     NetworkConfig,
     ProcessInfo,
 )
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel
 from pydantic_ai import Tool
 from pydantic_ai._run_context import AgentDepsT, RunContext
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import InstructionPart, ToolCallPart, ToolReturn
 from pydantic_ai.tool_manager import ToolManager
-from pydantic_ai.tools import ToolDefinition, ToolSelector, matches_tool_selector
+from pydantic_ai.tools import ObjectJsonSchema, ToolDefinition, matches_tool_selector
 from pydantic_ai.toolsets import AbstractToolset, ToolsetTool, WrapperToolset
 from pydantic_core import to_json
 from typing_extensions import TypedDict
 
-from ._types import JustBashFileSystemConfig, JustBashInitialFileValue
+from ._types import JustBashFileSystemConfig, JustBashInitialFileValue, JustBashToolSelector
 
-_ShellToolArgs: TypeAlias = dict[str, JsonValue]
-_JsonSchema: TypeAlias = Mapping[str, object]
+_ShellToolArgs: TypeAlias = dict[str, Any]
 _MAX_SEARCH_RESULTS = 10
 
 
@@ -95,7 +94,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         tool_name: str = 'just_bash',
         command_prefix: str = '',
         helper_prefix: str = 'pai_',
-        exposed_tools: ToolSelector[AgentDepsT] = 'all',
+        exposed_tools: JustBashToolSelector[AgentDepsT] = 'all',
         instructions: str | None = None,
         files: Mapping[str, JustBashInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
@@ -521,9 +520,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             return self._error_result(str(exc), exit_code=2)
 
         try:
-            result = await shell_state.tool_manager.handle_call(
-                ToolCallPart(tool_name=tool_name, args=cast(dict[str, Any], parsed_args))
-            )
+            result = await shell_state.tool_manager.handle_call(ToolCallPart(tool_name=tool_name, args=parsed_args))
         except Exception as exc:
             return self._error_result(str(exc), exit_code=1)
 
@@ -747,9 +744,16 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             package_json=self.package_json,
         )
 
-    def _schema_properties(self, tool_def: ToolDefinition) -> dict[str, _JsonSchema]:
-        properties = tool_def.parameters_json_schema.get('properties') or {}
-        return cast(dict[str, _JsonSchema], properties)
+    def _schema_properties(self, tool_def: ToolDefinition) -> dict[str, ObjectJsonSchema]:
+        properties = tool_def.parameters_json_schema.get('properties')
+        if not isinstance(properties, dict):
+            return {}
+
+        result: dict[str, ObjectJsonSchema] = {}
+        for key, value in properties.items():
+            if isinstance(key, str) and isinstance(value, dict):
+                result[key] = value
+        return result
 
     def _split_flag(self, token: str) -> tuple[str, str | None]:
         name = token[2:]
@@ -758,34 +762,34 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             return flag_name, value
         return name, None
 
-    def _resolve_flag_name(self, flag_name: str, properties: Mapping[str, _JsonSchema]) -> str:
+    def _resolve_flag_name(self, flag_name: str, properties: Mapping[str, ObjectJsonSchema]) -> str:
         candidates = [flag_name, flag_name.replace('-', '_'), flag_name.replace('_', '-')]
         for candidate in candidates:
             if candidate in properties:
                 return candidate
         raise ValueError(f'Unknown argument --{flag_name}.')
 
-    def _coerce_flag_value(self, prop_schema: _JsonSchema, raw_value: str) -> JsonValue:
+    def _coerce_flag_value(self, prop_schema: ObjectJsonSchema, raw_value: str) -> Any:
         if self._expects_json_payload(prop_schema):
-            return cast(JsonValue, json.loads(raw_value))
+            return json.loads(raw_value)
         return raw_value
 
-    def _coerce_single_argument(self, prop_schema: _JsonSchema, values: list[str]) -> JsonValue:
+    def _coerce_single_argument(self, prop_schema: ObjectJsonSchema, values: list[str]) -> Any:
         if self._is_array_schema(prop_schema):
-            return cast(JsonValue, values)
+            return values
         if self._expects_json_payload(prop_schema) and len(values) == 1:
-            return cast(JsonValue, json.loads(values[0]))
+            return json.loads(values[0])
         if self._is_string_schema(prop_schema):
             return ' '.join(values)
         if len(values) == 1:
             return values[0]
-        return cast(JsonValue, values)
+        return values
 
-    def _coerce_stdin_argument(self, prop_schema: _JsonSchema, stdin: str) -> JsonValue:
+    def _coerce_stdin_argument(self, prop_schema: ObjectJsonSchema, stdin: str) -> Any:
         if self._expects_json_payload(prop_schema):
-            return cast(JsonValue, json.loads(stdin))
+            return json.loads(stdin)
         if self._is_array_schema(prop_schema):
-            return cast(JsonValue, [line for line in stdin.splitlines() if line])
+            return [line for line in stdin.splitlines() if line]
         return stdin
 
     def _parse_json_object(self, payload: str) -> _ShellToolArgs:
@@ -795,25 +799,25 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             raise ValueError(f'Invalid JSON payload: {exc.msg}') from exc
         if not isinstance(parsed, dict):
             raise ValueError('Expected a JSON object.')
-        return cast(_ShellToolArgs, parsed)
+        return parsed
 
-    def _expects_json_payload(self, schema: _JsonSchema) -> bool:
+    def _expects_json_payload(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type in {'object', 'array'}:
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(
-                self._expects_json_payload(cast(_JsonSchema, item)) for item in variants
-            ):
-                return True
+            if isinstance(variants, list):
+                for item in variants:
+                    if isinstance(item, dict) and self._expects_json_payload(item):
+                        return True
         return False
 
-    def _is_array_schema(self, schema: _JsonSchema) -> bool:
+    def _is_array_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         return schema_type == 'array'
 
-    def _is_string_schema(self, schema: _JsonSchema) -> bool:
+    def _is_string_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type == 'string':
             return True
@@ -821,16 +825,16 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             return True
         return False
 
-    def _is_boolean_schema(self, schema: _JsonSchema) -> bool:
+    def _is_boolean_schema(self, schema: ObjectJsonSchema) -> bool:
         schema_type = schema.get('type')
         if schema_type == 'boolean':
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(
-                self._is_boolean_schema(cast(_JsonSchema, item)) for item in variants
-            ):
-                return True
+            if isinstance(variants, list):
+                for item in variants:
+                    if isinstance(item, dict) and self._is_boolean_schema(item):
+                        return True
         return False
 
     def _error_result(self, message: str, *, exit_code: int) -> _CustomCommandResult:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import TypeAlias
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any, Literal, TypeAlias
 
 from just_bash import FileInit, InMemoryFs, LazyFile, MountableFs, OverlayFs, ReadWriteFs
+from pydantic_ai._run_context import AgentDepsT, RunContext
+from pydantic_ai.tools import ToolDefinition
 
 FileValue: TypeAlias = str | bytes
 LazyFileProvider: TypeAlias = Callable[[], FileValue | Awaitable[FileValue]]
@@ -27,3 +29,19 @@ SpecInitialFileValue: TypeAlias = FileValue | FileInit | LazyFile
 `just-py-bash` also accepts callback-based lazy providers at runtime, but those are
 not JSON/YAML spec-serializable.
 """
+
+JustBashToolSelectorFunc: TypeAlias = Callable[
+    [RunContext[AgentDepsT], ToolDefinition],
+    bool | Awaitable[bool],
+]
+"""Runtime tool-selector callback accepted by JustBash.
+
+This mirrors Pydantic AI's `ToolSelectorFunc`, but avoids its forward-ref annotation
+so `JustBash` can remain a plain pydantic dataclass without a rebuild step.
+"""
+
+JustBashToolSelector: TypeAlias = Literal['all'] | Sequence[str] | dict[str, Any] | JustBashToolSelectorFunc[AgentDepsT]
+"""Tool selector accepted by the runtime Python API."""
+
+SpecToolSelector: TypeAlias = Literal['all'] | Sequence[str] | dict[str, Any]
+"""Tool selector forms that are safe to construct from YAML/JSON specs."""

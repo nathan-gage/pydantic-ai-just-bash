@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Self
 
 from just_bash import JavaScriptConfig, NetworkConfig, ProcessInfo
-from pydantic.dataclasses import dataclass, rebuild_dataclass
+from pydantic.dataclasses import dataclass
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.tools import AgentDepsT, ToolDefinition, ToolSelector
+from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.toolsets import AbstractToolset
 
 from ._toolset import JustBashToolset
-from ._types import JustBashFileSystemConfig, JustBashInitialFileValue, SpecFileSystemConfig, SpecInitialFileValue
+from ._types import (
+    JustBashFileSystemConfig,
+    JustBashInitialFileValue,
+    JustBashToolSelector,
+    SpecFileSystemConfig,
+    SpecInitialFileValue,
+    SpecToolSelector,
+)
 
 
 @dataclass
@@ -24,7 +31,7 @@ class JustBash(AbstractCapability[AgentDepsT]):
     tool_name: str = 'just_bash'
     command_prefix: str = ''
     helper_prefix: str = 'pai_'
-    exposed_tools: ToolSelector[AgentDepsT] = 'all'
+    exposed_tools: JustBashToolSelector[AgentDepsT] = 'all'
     instructions: str | None = None
     files: Mapping[str, JustBashInitialFileValue] | None = None
     env: Mapping[str, str] | None = None
@@ -50,7 +57,7 @@ class JustBash(AbstractCapability[AgentDepsT]):
         tool_name: str = 'just_bash',
         command_prefix: str = '',
         helper_prefix: str = 'pai_',
-        exposed_tools: ToolSelector[Any] = 'all',
+        exposed_tools: SpecToolSelector = 'all',
         instructions: str | None = None,
         files: Mapping[str, SpecInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
@@ -64,7 +71,7 @@ class JustBash(AbstractCapability[AgentDepsT]):
         node_command: Sequence[str] | None = None,
         js_entry: str | None = None,
         package_json: str | None = None,
-    ) -> JustBash[Any]:
+    ) -> Self:
         return cls(
             tool_name=tool_name,
             command_prefix=command_prefix,
@@ -106,6 +113,3 @@ class JustBash(AbstractCapability[AgentDepsT]):
             js_entry=self.js_entry,
             package_json=self.package_json,
         )
-
-
-rebuild_dataclass(cast(Any, JustBash), _types_namespace={'ToolDefinition': ToolDefinition})
