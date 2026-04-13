@@ -15,7 +15,7 @@ from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.tools import ToolDefinition, ToolSelector, matches_tool_selector
 from pydantic_ai.toolsets import AbstractToolset, ToolsetTool
 
-from ._types import PublicFileSystemConfig, PublicInitialFileValue
+from ._types import JustBashFileSystemConfig, JustBashInitialFileValue
 
 _ANY_JSON_TA = TypeAdapter(Any)
 _MAX_SEARCH_RESULTS = 10
@@ -76,10 +76,10 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         helper_prefix: str = 'pai_',
         exposed_tools: ToolSelector[AgentDepsT] = 'all',
         instructions: str | None = None,
-        files: Mapping[str, PublicInitialFileValue] | None = None,
+        files: Mapping[str, JustBashInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
         cwd: str | None = None,
-        fs: PublicFileSystemConfig | None = None,
+        fs: JustBashFileSystemConfig | None = None,
         python: bool = False,
         javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,

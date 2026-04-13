@@ -159,9 +159,14 @@ The current spec-safe surface includes the public `JustBash` fields, including:
 
 ### Python-only configuration surface
 
-Some `just-py-bash` configuration remains Python-only because it depends on runtime callables rather than JSON/YAML data.
+Some configuration remains Python-only because it depends on runtime callables rather than JSON/YAML data.
 
-Today, the important example is callback-based lazy file providers:
+The current Python-only surface includes:
+
+- callable `exposed_tools` selectors
+- callback-based lazy file providers, either passed directly or wrapped in `LazyFile(...)`
+
+For example:
 
 ```python
 from just_bash import LazyFile

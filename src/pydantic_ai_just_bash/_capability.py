@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from just_bash import JavaScriptConfig, NetworkConfig, ProcessInfo
-from pydantic import TypeAdapter
+from pydantic.dataclasses import dataclass, rebuild_dataclass
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.tools import AgentDepsT, ToolSelector
+from pydantic_ai.tools import AgentDepsT, ToolDefinition, ToolSelector
 from pydantic_ai.toolsets import AbstractToolset
 
 from ._toolset import JustBashToolset
-from ._types import PublicFileSystemConfig, PublicInitialFileValue
+from ._types import JustBashFileSystemConfig, JustBashInitialFileValue, SpecFileSystemConfig, SpecInitialFileValue
 
 
 @dataclass
@@ -27,10 +26,10 @@ class JustBash(AbstractCapability[AgentDepsT]):
     helper_prefix: str = 'pai_'
     exposed_tools: ToolSelector[AgentDepsT] = 'all'
     instructions: str | None = None
-    files: Mapping[str, PublicInitialFileValue] | None = None
+    files: Mapping[str, JustBashInitialFileValue] | None = None
     env: Mapping[str, str] | None = None
     cwd: str | None = None
-    fs: PublicFileSystemConfig | None = None
+    fs: JustBashFileSystemConfig | None = None
     python: bool = False
     javascript: bool | JavaScriptConfig = False
     commands: Sequence[str] | None = None
@@ -53,10 +52,10 @@ class JustBash(AbstractCapability[AgentDepsT]):
         helper_prefix: str = 'pai_',
         exposed_tools: ToolSelector[Any] = 'all',
         instructions: str | None = None,
-        files: Mapping[str, PublicInitialFileValue] | None = None,
+        files: Mapping[str, SpecInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
         cwd: str | None = None,
-        fs: PublicFileSystemConfig | None = None,
+        fs: SpecFileSystemConfig | None = None,
         python: bool = False,
         javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
@@ -66,15 +65,6 @@ class JustBash(AbstractCapability[AgentDepsT]):
         js_entry: str | None = None,
         package_json: str | None = None,
     ) -> JustBash[Any]:
-        files = TypeAdapter(Mapping[str, PublicInitialFileValue] | None).validate_python(files)
-        env = TypeAdapter(Mapping[str, str] | None).validate_python(env)
-        fs = TypeAdapter(PublicFileSystemConfig | None).validate_python(fs)
-        javascript = TypeAdapter(bool | JavaScriptConfig).validate_python(javascript)
-        commands = TypeAdapter(Sequence[str] | None).validate_python(commands)
-        network = TypeAdapter(NetworkConfig | None).validate_python(network)
-        process_info = TypeAdapter(ProcessInfo | None).validate_python(process_info)
-        node_command = TypeAdapter(Sequence[str] | None).validate_python(node_command)
-
         return cls(
             tool_name=tool_name,
             command_prefix=command_prefix,
@@ -116,3 +106,6 @@ class JustBash(AbstractCapability[AgentDepsT]):
             js_entry=self.js_entry,
             package_json=self.package_json,
         )
+
+
+rebuild_dataclass(cast(Any, JustBash), _types_namespace={'ToolDefinition': ToolDefinition})

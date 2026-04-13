@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TypeVar
 
 import pytest
+from just_bash import LazyFile
 from pydantic_ai import Agent, FunctionToolset, ToolCallPart
 from pydantic_ai._run_context import RunContext
 from pydantic_ai.models.test import TestModel
@@ -190,6 +191,19 @@ async def test_just_bash_toolset_can_filter_exposed_tools() -> None:
 
     assert 'visible' in result.stdout
     assert 'hidden' not in result.stdout
+
+
+def test_just_bash_python_api_accepts_callback_lazy_file_provider() -> None:
+    capability = JustBash(
+        files={
+            '/workspace/generated.txt': LazyFile(provider=lambda: 'generated at session start\n'),
+        }
+    )
+
+    assert capability.files is not None
+    lazy_file = capability.files['/workspace/generated.txt']
+    assert isinstance(lazy_file, LazyFile)
+    assert callable(lazy_file.provider)
 
 
 async def test_just_bash_capability_adds_tool_to_agent() -> None:
