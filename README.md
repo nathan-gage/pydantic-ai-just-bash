@@ -1,6 +1,6 @@
 # pydantic-ai-just-bash
 
-[![Source](https://img.shields.io/badge/source-GitHub-black?logo=github)](https://github.com/nathan-gage/pydantic-ai-just-bash)
+[![PyPI](https://img.shields.io/pypi/v/pydantic-ai-just-bash.svg)](https://pypi.org/project/pydantic-ai-just-bash/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
