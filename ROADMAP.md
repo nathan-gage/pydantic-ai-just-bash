@@ -10,7 +10,7 @@ Ordered roughly by priority.
 - [x] Expose `bash_list_tools` as a top-level Pydantic AI tool
 - [x] Expose `bash_search_tools` as a top-level Pydantic AI tool
 - [x] Expose `bash_describe_tool` as a top-level Pydantic AI tool
-- [ ] Decide and document whether wrapped tools remain directly visible by default, or whether a shell-only mode should also be supported
+- [x] Decide and document whether wrapped tools remain directly visible by default, or whether a shell-only mode should also be supported
 
 ## Bash-like command behavior
 
@@ -19,9 +19,9 @@ Ordered roughly by priority.
 - [x] Generate help text from `ToolDefinition` in a CLI-style format
 - [x] Include usage, argument help, rendered signature, and JSON fallback forms in generated help
 - [x] Define the behavior for tools that have an actual argument named `help`
-- [ ] Make that `help` collision behavior explicit, documented, and tested
-- [ ] Keep argument binding rules bash-like, with JSON as the escape hatch for complex values
-- [ ] Improve command-line error messages so they read like CLI errors, not framework internals
+- [x] Make that `help` collision behavior explicit, documented, and tested
+- [x] Keep argument binding rules bash-like, with JSON as the escape hatch for complex values
+- [x] Improve command-line error messages so they read like CLI errors, not framework internals
 
 ## Tool discovery and deferred loading
 
@@ -89,8 +89,8 @@ Ordered roughly by priority.
 ## Documentation and examples
 
 - [x] Update the README to reflect the final public API
-- [ ] Document the command model clearly
-- [ ] Document the generated `--help` behavior clearly
+- [x] Document the command model clearly
+- [x] Document the generated `--help` behavior clearly
 - [ ] Document deferred discovery and dynamic toolset behavior clearly
 - [ ] Add examples for workflows people are likely to copy
 - [ ] Add examples for persistent shell + wrapped tools
