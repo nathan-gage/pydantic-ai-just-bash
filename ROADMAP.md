@@ -5,20 +5,20 @@ Ordered roughly by priority.
 ## Public API and naming
 
 - [x] Ship a first-cut capability and toolset wrapper
-- [ ] Make `bash` the default top-level tool name
-- [ ] Rename shell helpers from `pai_*` to `bash_*`
-- [ ] Expose `bash_list_tools` as a top-level Pydantic AI tool
-- [ ] Expose `bash_search_tools` as a top-level Pydantic AI tool
-- [ ] Expose `bash_describe_tool` as a top-level Pydantic AI tool
+- [x] Make `bash` the default top-level tool name
+- [x] Rename shell helpers from `pai_*` to `bash_*`
+- [x] Expose `bash_list_tools` as a top-level Pydantic AI tool
+- [x] Expose `bash_search_tools` as a top-level Pydantic AI tool
+- [x] Expose `bash_describe_tool` as a top-level Pydantic AI tool
 - [ ] Decide and document whether wrapped tools remain directly visible by default, or whether a shell-only mode should also be supported
 
 ## Bash-like command behavior
 
 - [ ] Make wrapped tools feel like plausible shell commands rather than framework helpers
-- [ ] Support `some_tool --help` and `some_tool -h` in a familiar way
-- [ ] Generate help text from `ToolDefinition` in a CLI-style format
-- [ ] Include usage, argument help, rendered signature, and JSON fallback forms in generated help
-- [ ] Define the behavior for tools that have an actual argument named `help`
+- [x] Support `some_tool --help` and `some_tool -h` in a familiar way
+- [x] Generate help text from `ToolDefinition` in a CLI-style format
+- [x] Include usage, argument help, rendered signature, and JSON fallback forms in generated help
+- [x] Define the behavior for tools that have an actual argument named `help`
 - [ ] Make that `help` collision behavior explicit, documented, and tested
 - [ ] Keep argument binding rules bash-like, with JSON as the escape hatch for complex values
 - [ ] Improve command-line error messages so they read like CLI errors, not framework internals
@@ -27,7 +27,7 @@ Ordered roughly by priority.
 
 - [x] Support shell-side discovery of deferred tools in the first cut
 - [ ] Finalize the public shape of `bash_search_tools`
-- [ ] Make list/search/describe behavior consistent between top-level tools and shell commands
+- [x] Make list/search/describe behavior consistent between top-level tools and shell commands
 - [ ] Keep the progressive-disclosure behavior aligned with Pydantic AI's deferred loading model
 - [ ] Make deferred-tool behavior clearly documented from both the agent side and the shell side
 
@@ -88,7 +88,7 @@ Ordered roughly by priority.
 
 ## Documentation and examples
 
-- [ ] Update the README to reflect the final public API
+- [x] Update the README to reflect the final public API
 - [ ] Document the command model clearly
 - [ ] Document the generated `--help` behavior clearly
 - [ ] Document deferred discovery and dynamic toolset behavior clearly

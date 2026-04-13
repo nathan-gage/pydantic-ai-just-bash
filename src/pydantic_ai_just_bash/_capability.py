@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Self
 
-from just_bash import JavaScriptConfig, NetworkConfig, ProcessInfo
+from just_bash import ExecutionLimits, JavaScriptConfig, NetworkConfig, ProcessInfo
 from pydantic.dataclasses import dataclass
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.toolsets import AbstractToolset
 
-from ._toolset import JustBashToolset
+from ._toolset import HelpArgumentRenamer, JustBashToolset
 from ._types import (
     JustBashFileSystemConfig,
     JustBashInitialFileValue,
@@ -22,21 +22,28 @@ from ._types import (
 
 @dataclass
 class JustBash(AbstractCapability[AgentDepsT]):
-    """Capability that adds a persistent just-bash executor to an agent.
+    """Capability that adds a persistent just-bash executor and bash helpers.
 
     It wraps the assembled toolset with :class:`JustBashToolset`, exposing a
-    `just_bash` tool whose shell can call wrapped tools as commands.
+    `bash` tool by default plus helper tools such as `bash_list_tools`.
+
+    Wrapped tools remain directly visible by default; set
+    `expose_wrapped_tools=False` for shell-only mode.
     """
 
-    tool_name: str = 'just_bash'
+    tool_name: str = 'bash'
     command_prefix: str = ''
-    helper_prefix: str = 'pai_'
+    helper_prefix: str = 'bash_'
     exposed_tools: JustBashToolSelector[AgentDepsT] = 'all'
+    expose_wrapped_tools: bool = True
     instructions: str | None = None
+    help_flag_name: str = 'help'
+    rename_help_argument: HelpArgumentRenamer = None
     files: Mapping[str, JustBashInitialFileValue] | None = None
     env: Mapping[str, str] | None = None
     cwd: str | None = None
     fs: JustBashFileSystemConfig | None = None
+    execution_limits: ExecutionLimits | None = None
     python: bool = False
     javascript: bool | JavaScriptConfig = False
     commands: Sequence[str] | None = None
@@ -54,15 +61,19 @@ class JustBash(AbstractCapability[AgentDepsT]):
     def from_spec(
         cls,
         *,
-        tool_name: str = 'just_bash',
+        tool_name: str = 'bash',
         command_prefix: str = '',
-        helper_prefix: str = 'pai_',
+        helper_prefix: str = 'bash_',
         exposed_tools: SpecToolSelector = 'all',
+        expose_wrapped_tools: bool = True,
         instructions: str | None = None,
+        help_flag_name: str = 'help',
+        rename_help_argument: str | None = None,
         files: Mapping[str, SpecInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
         cwd: str | None = None,
         fs: SpecFileSystemConfig | None = None,
+        execution_limits: ExecutionLimits | None = None,
         python: bool = False,
         javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
@@ -77,11 +88,15 @@ class JustBash(AbstractCapability[AgentDepsT]):
             command_prefix=command_prefix,
             helper_prefix=helper_prefix,
             exposed_tools=exposed_tools,
+            expose_wrapped_tools=expose_wrapped_tools,
             instructions=instructions,
+            help_flag_name=help_flag_name,
+            rename_help_argument=rename_help_argument,
             files=files,
             env=env,
             cwd=cwd,
             fs=fs,
+            execution_limits=execution_limits,
             python=python,
             javascript=javascript,
             commands=commands,
@@ -99,11 +114,15 @@ class JustBash(AbstractCapability[AgentDepsT]):
             command_prefix=self.command_prefix,
             helper_prefix=self.helper_prefix,
             exposed_tools=self.exposed_tools,
+            expose_wrapped_tools=self.expose_wrapped_tools,
             instructions=self.instructions,
+            help_flag_name=self.help_flag_name,
+            rename_help_argument=self.rename_help_argument,
             files=self.files,
             env=self.env,
             cwd=self.cwd,
             fs=self.fs,
+            execution_limits=self.execution_limits,
             python=self.python,
             javascript=self.javascript,
             commands=self.commands,

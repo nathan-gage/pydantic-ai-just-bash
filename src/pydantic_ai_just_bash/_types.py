@@ -3,12 +3,25 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, Literal, TypeAlias
 
-from just_bash import FileInit, InMemoryFs, LazyFile, MountableFs, OverlayFs, ReadWriteFs
+from just_bash import (
+    ExecutionLimits,
+    FileInit,
+    InMemoryFs,
+    LazyFile,
+    MountableFs,
+    OverlayFs,
+    ReadWriteFs,
+)
 from pydantic_ai._run_context import AgentDepsT, RunContext
 from pydantic_ai.tools import ToolDefinition
 
 FileValue: TypeAlias = str | bytes
 LazyFileProvider: TypeAlias = Callable[[], FileValue | Awaitable[FileValue]]
+HelpArgumentRenamer: TypeAlias = str | Callable[[str, str], str] | None
+SpecHelpArgumentRenamer: TypeAlias = str | None
+
+JustBashExecutionLimits: TypeAlias = ExecutionLimits
+"""Execution limits accepted by both the Python API and specs."""
 
 JustBashFileSystemConfig: TypeAlias = InMemoryFs | OverlayFs | ReadWriteFs | MountableFs
 """Filesystem config types accepted by both the Python API and specs."""

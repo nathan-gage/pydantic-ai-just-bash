@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from just_bash import FileInit, InMemoryFs, JavaScriptConfig, LazyFile
+from just_bash import ExecutionLimits, FileInit, InMemoryFs, JavaScriptConfig, LazyFile
 from pydantic_ai import Agent
 from pydantic_ai._spec import CapabilitySpec
 from pydantic_ai.capabilities._ordering import collect_leaves
@@ -16,9 +16,12 @@ from pydantic_ai_just_bash import JustBash
 ALL_SPEC_ARGS: dict[str, Any] = {
     'tool_name': 'shellbox',
     'command_prefix': 'cmd_',
-    'helper_prefix': 'jb_',
+    'helper_prefix': 'bash_',
     'exposed_tools': ['visible_tool', 'other_tool'],
+    'expose_wrapped_tools': False,
     'instructions': 'Use the shell carefully.',
+    'help_flag_name': 'usage',
+    'rename_help_argument': '{tool_name}_{arg_name}',
     'files': {
         '/workspace/plain.txt': 'plain text\n',
         '/workspace/init.txt': FileInit(content='seeded\n', mode=0o640),
@@ -27,6 +30,7 @@ ALL_SPEC_ARGS: dict[str, Any] = {
     'env': {'MODE': 'test', 'DEBUG': '1'},
     'cwd': '/workspace',
     'fs': InMemoryFs(files={'/workspace/from_fs.txt': 'from fs\n'}),
+    'execution_limits': ExecutionLimits(max_output_size=4096),
     'python': True,
     'javascript': JavaScriptConfig(bootstrap='globalThis.answer = 42;'),
     'commands': ['echo', 'cat'],
