@@ -35,17 +35,17 @@ async def test_just_bash_toolset_executes_visible_tool_command() -> None:
         """Greet a user."""
         return f'hello, {name}'
 
-    wrapped = JustBashToolset(toolset)
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={
-                'script': 'greet world',
-            },
+        result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={
+                    'script': 'greet world',
+                },
+            )
         )
-    )
 
     assert isinstance(result, JustBashExecutionResult)
     assert result.stdout == 'hello, world'
@@ -62,46 +62,46 @@ async def test_just_bash_toolset_supports_json_and_flag_binding() -> None:
         """Add two numbers."""
         return a + b
 
-    wrapped = JustBashToolset(toolset)
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    flag_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={
-                'script': 'add --a 2 --b 5',
-            },
+        flag_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={
+                    'script': 'add --a 2 --b 5',
+                },
+            )
         )
-    )
-    json_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={
-                'script': 'add --json \'{"a": 3, "b": 4}\'',
-            },
+        json_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={
+                    'script': 'add --json \'{"a": 3, "b": 4}\'',
+                },
+            )
         )
-    )
 
     assert flag_result.stdout == '7'
     assert json_result.stdout == '7'
 
 
 async def test_just_bash_toolset_persists_filesystem_across_calls() -> None:
-    wrapped = JustBashToolset(FunctionToolset[None]())
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(FunctionToolset[None]()) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    write_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': "printf 'hello from fs' > note.txt"},
+        write_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': "printf 'hello from fs' > note.txt"},
+            )
         )
-    )
-    read_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'cat note.txt'},
+        read_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'cat note.txt'},
+            )
         )
-    )
 
     assert write_result.exit_code == 0
     assert read_result.stdout == 'hello from fs'
@@ -115,27 +115,27 @@ async def test_just_bash_toolset_hides_deferred_tools_until_shell_search() -> No
         """Look up a stock price by ticker symbol."""
         return f'{symbol}=150.00'
 
-    wrapped = JustBashToolset(toolset)
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    hidden_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'stock_lookup AAPL'},
+        hidden_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'stock_lookup AAPL'},
+            )
         )
-    )
-    discovered_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'pai_search_tools stock && stock_lookup AAPL'},
+        discovered_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'pai_search_tools stock && stock_lookup AAPL'},
+            )
         )
-    )
-    persisted_result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'stock_lookup MSFT'},
+        persisted_result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'stock_lookup MSFT'},
+            )
         )
-    )
 
     assert hidden_result.exit_code != 0
     assert 'hidden' in hidden_result.stderr
@@ -152,15 +152,15 @@ async def test_just_bash_toolset_generic_helper_can_call_selected_tools() -> Non
         """Echo text."""
         return text
 
-    wrapped = JustBashToolset(toolset, command_prefix='tool.')
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset, command_prefix='tool.') as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'pai_call_tool echo --json \'{"text": "hi"}\''},
+        result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'pai_call_tool echo --json \'{"text": "hi"}\''},
+            )
         )
-    )
 
     assert result.stdout == 'hi'
 
@@ -178,15 +178,15 @@ async def test_just_bash_toolset_can_filter_exposed_tools() -> None:
         """Hidden tool."""
         return 'hidden'
 
-    wrapped = JustBashToolset(toolset, exposed_tools=['visible'])
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset, exposed_tools=['visible']) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'pai_list_tools'},
+        result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'pai_list_tools'},
+            )
         )
-    )
 
     assert 'visible' in result.stdout
     assert 'hidden' not in result.stdout
@@ -211,16 +211,16 @@ async def test_just_bash_capability_adds_tool_to_agent() -> None:
 
 
 async def test_just_bash_reset_session_clears_filesystem() -> None:
-    wrapped = JustBashToolset(FunctionToolset[None]())
-    manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(FunctionToolset[None]()) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    await manager.handle_call(ToolCallPart(tool_name='just_bash', args={'script': "printf 'hello' > note.txt"}))
-    result = await manager.handle_call(
-        ToolCallPart(
-            tool_name='just_bash',
-            args={'script': 'cat note.txt', 'reset_session': True},
+        await manager.handle_call(ToolCallPart(tool_name='just_bash', args={'script': "printf 'hello' > note.txt"}))
+        result = await manager.handle_call(
+            ToolCallPart(
+                tool_name='just_bash',
+                args={'script': 'cat note.txt', 'reset_session': True},
+            )
         )
-    )
 
     assert result.exit_code != 0
     assert 'note.txt' in result.stderr
