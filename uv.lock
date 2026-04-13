@@ -202,7 +202,6 @@ wheels = [
 
 [[package]]
 name = "pydantic-ai-just-bash"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "just-py-bash" },
