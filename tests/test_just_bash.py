@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import pytest
-
 from pydantic_ai import Agent, FunctionToolset, ToolCallPart
 from pydantic_ai._run_context import RunContext
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.usage import RunUsage
+
 from pydantic_ai_just_bash import JustBash, JustBashExecutionResult, JustBashToolset
 
 pytestmark = pytest.mark.anyio
@@ -78,7 +77,7 @@ async def test_just_bash_toolset_supports_json_and_flag_binding() -> None:
         ToolCallPart(
             tool_name='just_bash',
             args={
-                'script': "add --json '{\"a\": 3, \"b\": 4}'",
+                'script': 'add --json \'{"a": 3, "b": 4}\'',
             },
         )
     )
@@ -159,7 +158,7 @@ async def test_just_bash_toolset_generic_helper_can_call_selected_tools() -> Non
     result = await manager.handle_call(
         ToolCallPart(
             tool_name='just_bash',
-            args={'script': "pai_call_tool echo --json '{\"text\": \"hi\"}'"},
+            args={'script': 'pai_call_tool echo --json \'{"text": "hi"}\''},
         )
     )
 
@@ -194,7 +193,8 @@ async def test_just_bash_toolset_can_filter_exposed_tools() -> None:
 
 
 async def test_just_bash_capability_adds_tool_to_agent() -> None:
-    agent = Agent(TestModel(), capabilities=[JustBash()])
+    model = TestModel()
+    agent = Agent(model, capabilities=[JustBash()])
 
     @agent.tool_plain
     def greet(name: str) -> str:
@@ -202,7 +202,7 @@ async def test_just_bash_capability_adds_tool_to_agent() -> None:
         return f'hello, {name}'
 
     await agent.run('What tools are available?')
-    params = agent.model.last_model_request_parameters
+    params = model.last_model_request_parameters
     assert params is not None
 
     tool_names = [tool.name for tool in params.function_tools]
@@ -214,9 +214,7 @@ async def test_just_bash_reset_session_clears_filesystem() -> None:
     wrapped = JustBashToolset(FunctionToolset[None]())
     manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
 
-    await manager.handle_call(
-        ToolCallPart(tool_name='just_bash', args={'script': "printf 'hello' > note.txt"})
-    )
+    await manager.handle_call(ToolCallPart(tool_name='just_bash', args={'script': "printf 'hello' > note.txt"}))
     result = await manager.handle_call(
         ToolCallPart(
             tool_name='just_bash',

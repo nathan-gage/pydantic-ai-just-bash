@@ -158,10 +158,22 @@ Use `--help` on a bound command, or `pai_describe_tool`, to inspect the generate
 ## Development
 
 ```bash
-uv sync
-uv run pytest
+make install
+make all-ci
 uv build
 ```
+
+Common commands:
+
+| Task | Command |
+| --- | --- |
+| Install dev + lint tooling | `make install` |
+| Format code and config | `make format` |
+| Check formatting only | `make format-check` |
+| Lint | `make lint` |
+| Type-check | `make typecheck` |
+| Test | `make test` |
+| Run the full local CI suite | `make all-ci` |
 
 ## Project status
 

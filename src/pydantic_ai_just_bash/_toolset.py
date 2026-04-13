@@ -143,7 +143,8 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         try:
             await self._close_bash()
         finally:
-            return await self.wrapped.__aexit__(*args)
+            wrapped_result = await self.wrapped.__aexit__(*args)
+        return wrapped_result
 
     async def get_instructions(
         self, ctx: RunContext[AgentDepsT]
@@ -411,19 +412,20 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         visible_commands = sorted(
             command_name
             for command_name, tool_name in shell_state.command_to_tool.items()
-            if tool_name not in shell_state.hidden_tools
-            and command_name in self._bound_tool_commands
+            if tool_name not in shell_state.hidden_tools and command_name in self._bound_tool_commands
         )
 
         lines = list(visible_commands)
-        hidden_count = sum(1 for tool_name in shell_state.hidden_tools if self._tool_command_name(tool_name) in self._bound_tool_commands)
+        hidden_count = sum(
+            1
+            for tool_name in shell_state.hidden_tools
+            if self._tool_command_name(tool_name) in self._bound_tool_commands
+        )
         if hidden_count:
             lines.append(
                 f'[{hidden_count} hidden tool commands available via {self._helper_name("search_tools")} <keywords>]'
             )
-        lines.append(
-            f'[generic helper: {self._helper_name("call_tool")} <tool-or-command> --json {{...}}]'
-        )
+        lines.append(f'[generic helper: {self._helper_name("call_tool")} <tool-or-command> --json {{...}}]')
 
         stdout = '\n'.join(lines)
         if stdout:
@@ -472,7 +474,8 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
                 f'\nUse {self._helper_name("call_tool")} <tool_name> --json {{...}} '
                 'for tools without a direct shell command in the current session.'
             )
-        stdout = _ANY_JSON_TA.dump_json(
+        payload = cast(
+            Any,
             [
                 {
                     'tool_name': match.tool_name,
@@ -480,8 +483,9 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
                     'description': match.description,
                 }
                 for match in matches
-            ]
-        ).decode() + hint
+            ],
+        )
+        stdout = _ANY_JSON_TA.dump_json(payload).decode() + hint
         return {'stdout': stdout, 'stderr': '', 'exit_code': 0}
 
     async def _invoke_tool(
@@ -515,10 +519,8 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return self._error_result(str(exc), exit_code=2)
 
         try:
-            result = await shell_state.tool_manager.handle_call(
-                ToolCallPart(tool_name=tool_name, args=parsed_args)
-            )
-        except Exception as exc:  # noqa: BLE001
+            result = await shell_state.tool_manager.handle_call(ToolCallPart(tool_name=tool_name, args=parsed_args))
+        except Exception as exc:
             return self._error_result(str(exc), exit_code=1)
 
         return {
@@ -794,7 +796,9 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(self._expects_json_payload(cast(Mapping[str, Any], item)) for item in variants):
+            if isinstance(variants, list) and any(
+                self._expects_json_payload(cast(Mapping[str, Any], item)) for item in variants
+            ):
                 return True
         return False
 
@@ -816,7 +820,9 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
             return True
         for key in ('anyOf', 'oneOf', 'allOf'):
             variants = schema.get(key)
-            if isinstance(variants, list) and any(self._is_boolean_schema(cast(Mapping[str, Any], item)) for item in variants):
+            if isinstance(variants, list) and any(
+                self._is_boolean_schema(cast(Mapping[str, Any], item)) for item in variants
+            ):
                 return True
         return False
 
