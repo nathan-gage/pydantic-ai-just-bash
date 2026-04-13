@@ -4,11 +4,14 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from just_bash import JavaScriptConfig, NetworkConfig, ProcessInfo
+from pydantic import TypeAdapter
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT, ToolSelector
 from pydantic_ai.toolsets import AbstractToolset
 
 from ._toolset import JustBashToolset
+from ._types import PublicFileSystemConfig, PublicInitialFileValue
 
 
 @dataclass
@@ -24,22 +27,73 @@ class JustBash(AbstractCapability[AgentDepsT]):
     helper_prefix: str = 'pai_'
     exposed_tools: ToolSelector[AgentDepsT] = 'all'
     instructions: str | None = None
-    files: Mapping[str, Any] | None = None
+    files: Mapping[str, PublicInitialFileValue] | None = None
     env: Mapping[str, str] | None = None
     cwd: str | None = None
-    fs: Any = None
+    fs: PublicFileSystemConfig | None = None
     python: bool = False
-    javascript: bool | Any = False
+    javascript: bool | JavaScriptConfig = False
     commands: Sequence[str] | None = None
-    network: Any = None
-    process_info: Any = None
+    network: NetworkConfig | None = None
+    process_info: ProcessInfo | None = None
     node_command: Sequence[str] | None = None
     js_entry: str | None = None
     package_json: str | None = None
 
     @classmethod
     def get_serialization_name(cls) -> str | None:
-        return None
+        return 'JustBash'
+
+    @classmethod
+    def from_spec(
+        cls,
+        *,
+        tool_name: str = 'just_bash',
+        command_prefix: str = '',
+        helper_prefix: str = 'pai_',
+        exposed_tools: ToolSelector[Any] = 'all',
+        instructions: str | None = None,
+        files: Mapping[str, PublicInitialFileValue] | None = None,
+        env: Mapping[str, str] | None = None,
+        cwd: str | None = None,
+        fs: PublicFileSystemConfig | None = None,
+        python: bool = False,
+        javascript: bool | JavaScriptConfig = False,
+        commands: Sequence[str] | None = None,
+        network: NetworkConfig | None = None,
+        process_info: ProcessInfo | None = None,
+        node_command: Sequence[str] | None = None,
+        js_entry: str | None = None,
+        package_json: str | None = None,
+    ) -> JustBash[Any]:
+        files = TypeAdapter(Mapping[str, PublicInitialFileValue] | None).validate_python(files)
+        env = TypeAdapter(Mapping[str, str] | None).validate_python(env)
+        fs = TypeAdapter(PublicFileSystemConfig | None).validate_python(fs)
+        javascript = TypeAdapter(bool | JavaScriptConfig).validate_python(javascript)
+        commands = TypeAdapter(Sequence[str] | None).validate_python(commands)
+        network = TypeAdapter(NetworkConfig | None).validate_python(network)
+        process_info = TypeAdapter(ProcessInfo | None).validate_python(process_info)
+        node_command = TypeAdapter(Sequence[str] | None).validate_python(node_command)
+
+        return cls(
+            tool_name=tool_name,
+            command_prefix=command_prefix,
+            helper_prefix=helper_prefix,
+            exposed_tools=exposed_tools,
+            instructions=instructions,
+            files=files,
+            env=env,
+            cwd=cwd,
+            fs=fs,
+            python=python,
+            javascript=javascript,
+            commands=commands,
+            network=network,
+            process_info=process_info,
+            node_command=node_command,
+            js_entry=js_entry,
+            package_json=package_json,
+        )
 
     def get_wrapper_toolset(self, toolset: AbstractToolset[AgentDepsT]) -> AbstractToolset[AgentDepsT] | None:
         return JustBashToolset(

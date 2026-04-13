@@ -48,13 +48,22 @@ Documentation = "https://github.com/nathan-gage/pydantic-ai-just-bash#readme"
 Issues = "https://github.com/nathan-gage/pydantic-ai-just-bash/issues"
 Changelog = "https://github.com/nathan-gage/pydantic-ai-just-bash/releases"
 
+[project.optional-dependencies]
+spec = ["pyyaml>=6.0.2", "pydantic-handlebars>=0.1.0"]
+
 [dependency-groups]
-dev = ["anyio>=4.0.0", "pytest>=8.0.0"]
+dev = [
+  "anyio>=4.0.0",
+  "pytest>=8.0.0",
+  "pyyaml>=6.0.2",
+  "pydantic-handlebars>=0.1.0",
+]
 lint = [
   "mypy>=1.15.0",
   "pyright>=1.1.408",
   "ruff>=0.14.0",
   "taplo>=0.9.3",
+  "types-PyYAML>=6.0.12.20250822",
   "yamlfix>=1.19.1",
 ]
 
@@ -99,6 +108,10 @@ cache-keys = [
   { file = "uv.lock" },
   { git = { commit = true, tags = true } },
 ]
+
+[tool.uv.sources]
+pydantic-ai-slim = { path = "../pydantic-ai-upstream/pydantic_ai_slim", editable = true }
+just-py-bash = { path = "../just-py-bash/just_py_bash", editable = true }
 
 [tool.ruff]
 line-length = 120

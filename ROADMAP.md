@@ -79,12 +79,12 @@ Ordered roughly by priority.
 
 ## Agent specs and YAML
 
-- [ ] Make the capability usable from `Agent.from_spec(...)`
-- [ ] Add proper serialization support for the capability
-- [ ] Define which configuration fields are spec-safe
+- [x] Make the capability usable from `Agent.from_spec(...)`
+- [x] Add proper serialization support for the capability
+- [x] Define which configuration fields are spec-safe
 - [ ] Document any Python-only configuration surface
-- [ ] Add tests for `Agent.from_spec(...)`
-- [ ] Add tests for file/YAML-based agent configuration
+- [x] Add tests for `Agent.from_spec(...)`
+- [x] Add tests for file/YAML-based agent configuration
 
 ## Documentation and examples
 

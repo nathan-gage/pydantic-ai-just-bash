@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Generic, cast
 
-from just_bash import AsyncBash, AsyncCustomCommandContext
+from just_bash import AsyncBash, AsyncCustomCommandContext, JavaScriptConfig, NetworkConfig, ProcessInfo
 from pydantic import BaseModel, TypeAdapter
 from pydantic_ai import Tool
 from pydantic_ai._run_context import AgentDepsT, RunContext
@@ -14,6 +14,8 @@ from pydantic_ai.messages import InstructionPart, ToolCallPart, ToolReturn
 from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.tools import ToolDefinition, ToolSelector, matches_tool_selector
 from pydantic_ai.toolsets import AbstractToolset, ToolsetTool
+
+from ._types import PublicFileSystemConfig, PublicInitialFileValue
 
 _ANY_JSON_TA = TypeAdapter(Any)
 _MAX_SEARCH_RESULTS = 10
@@ -74,15 +76,15 @@ class JustBashToolset(AbstractToolset[AgentDepsT]):
         helper_prefix: str = 'pai_',
         exposed_tools: ToolSelector[AgentDepsT] = 'all',
         instructions: str | None = None,
-        files: Mapping[str, Any] | None = None,
+        files: Mapping[str, PublicInitialFileValue] | None = None,
         env: Mapping[str, str] | None = None,
         cwd: str | None = None,
-        fs: Any = None,
+        fs: PublicFileSystemConfig | None = None,
         python: bool = False,
-        javascript: bool | Any = False,
+        javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
-        network: Any = None,
-        process_info: Any = None,
+        network: NetworkConfig | None = None,
+        process_info: ProcessInfo | None = None,
         node_command: Sequence[str] | None = None,
         js_entry: str | None = None,
         package_json: str | None = None,
