@@ -109,10 +109,6 @@ cache-keys = [
   { git = { commit = true, tags = true } },
 ]
 
-[tool.uv.sources]
-pydantic-ai-slim = { path = "../pydantic-ai-upstream/pydantic_ai_slim", editable = true }
-just-py-bash = { path = "../just-py-bash/just_py_bash", editable = true }
-
 [tool.ruff]
 line-length = 120
 target-version = "py311"

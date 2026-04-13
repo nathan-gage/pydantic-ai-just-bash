@@ -23,6 +23,7 @@ It adds a `just_bash` tool and binds wrapped Pydantic AI tools into that shell a
 | Use case | Command |
 | --- | --- |
 | Install from PyPI with `uv` | `uv add pydantic-ai-just-bash` |
+| Install spec/YAML support too | `uv add 'pydantic-ai-just-bash[spec]'` |
 | Install from PyPI with `pip` | `pip install pydantic-ai-just-bash` |
 | Install a cloned checkout in editable mode | `pip install -e .` |
 
@@ -123,6 +124,57 @@ The `just_bash` tool returns a structured result object with:
 - `stderr`
 - `exit_code`
 - `ok`
+
+## Agent specs and YAML
+
+`JustBash` can be loaded from `Agent.from_spec(...)` and `Agent.from_file(...)`.
+
+```yaml
+model: test
+capabilities:
+  - JustBash:
+      tool_name: just_bash
+      helper_prefix: pai_
+      python: true
+      files:
+        /workspace/seed.txt: hello from spec
+        /workspace/lazy.txt:
+          provider: lazy content from spec
+```
+
+Use the `spec` extra if you want the package to carry the YAML/spec dependencies itself:
+
+```bash
+uv add 'pydantic-ai-just-bash[spec]'
+```
+
+### Spec-safe configuration surface
+
+The current spec-safe surface includes the public `JustBash` fields, including:
+
+- shell naming/config fields like `tool_name`, `command_prefix`, `helper_prefix`, and `instructions`
+- runtime/session fields like `env`, `cwd`, `python`, `javascript`, `commands`, `network`, `process_info`, `node_command`, `js_entry`, and `package_json`
+- filesystem configuration via `files` and `fs`
+- spec-friendly file values such as plain text/bytes, `FileInit`, and `LazyFile` with a static `provider` value
+
+### Python-only configuration surface
+
+Some `just-py-bash` configuration remains Python-only because it depends on runtime callables rather than JSON/YAML data.
+
+Today, the important example is callback-based lazy file providers:
+
+```python
+from just_bash import LazyFile
+from pydantic_ai_just_bash import JustBash
+
+cap = JustBash(
+    files={
+        '/workspace/generated.txt': LazyFile(provider=lambda: 'generated at session start\n'),
+    },
+)
+```
+
+That callable form is supported when you configure `JustBash(...)` in Python, but it is not spec/YAML-serializable.
 
 ## Shell helpers
 
