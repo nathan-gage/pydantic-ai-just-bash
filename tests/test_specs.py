@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, TypeAlias
 
 import yaml
-from just_bash import ExecutionLimits, FileInit, InMemoryFs, JavaScriptConfig, LazyFile
+from just_bash import DefenseInDepthConfig, ExecutionLimits, FileInit, InMemoryFs, JavaScriptConfig, LazyFile
 from pydantic_ai import Agent
 from pydantic_ai._spec import CapabilitySpec
 from pydantic_ai.capabilities._ordering import collect_leaves
@@ -36,9 +36,11 @@ EXECUTION_LIMITS = ExecutionLimits(
 )
 
 SpecSampleValue: TypeAlias = (
-    bool
+    None
+    | bool
     | int
     | str
+    | DefenseInDepthConfig
     | ExecutionLimits
     | FileInit
     | InMemoryFs
@@ -69,6 +71,15 @@ SPEC_SAMPLE_ARGS: dict[str, SpecSampleValue] = {
     'python': True,
     'javascript': JavaScriptConfig(bootstrap='globalThis.answer = 42;'),
     'commands': ['echo', 'cat'],
+    'fetch': None,
+    'logger': None,
+    'trace': None,
+    'defense_in_depth': DefenseInDepthConfig(
+        enabled=True,
+        audit_mode=True,
+        exclude_violation_types=['process_stdout'],
+    ),
+    'coverage': None,
     'network': {
         'allowedUrlPrefixes': ['https://example.com'],
         'allowedMethods': ['GET'],

@@ -26,10 +26,16 @@ from ._shell_cli import (
 )
 from ._types import (
     HelpArgumentRenamer,
+    JustBashBackendPath,
+    JustBashCoverageWriter,
+    JustBashDefenseInDepth,
     JustBashExecutionLimits,
+    JustBashFetchCallback,
     JustBashFileSystemConfig,
     JustBashInitialFileValue,
+    JustBashLogger,
     JustBashToolSelector,
+    JustBashTraceCallback,
 )
 
 _ANY_JSON_TA = TypeAdapter(Any)
@@ -140,11 +146,16 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         python: bool = False,
         javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
+        fetch: JustBashFetchCallback | None = None,
+        logger: JustBashLogger | None = None,
+        trace: JustBashTraceCallback | None = None,
+        defense_in_depth: JustBashDefenseInDepth | None = None,
+        coverage: JustBashCoverageWriter | None = None,
         network: NetworkConfig | None = None,
         process_info: ProcessInfo | None = None,
         node_command: Sequence[str] | None = None,
-        js_entry: str | None = None,
-        package_json: str | None = None,
+        js_entry: JustBashBackendPath | None = None,
+        package_json: JustBashBackendPath | None = None,
     ) -> None:
         self.wrapped = wrapped
         self.tool_name = tool_name
@@ -163,6 +174,11 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         self.python = python
         self.javascript = javascript
         self.commands = commands
+        self.fetch = fetch
+        self.logger = logger
+        self.trace = trace
+        self.defense_in_depth = defense_in_depth
+        self.coverage = coverage
         self.network = network
         self.process_info = process_info
         self.node_command = node_command
@@ -884,6 +900,11 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             python=self.python,
             javascript=self.javascript,
             commands=self.commands,
+            fetch=self.fetch,
+            logger=self.logger,
+            trace=self.trace,
+            defense_in_depth=self.defense_in_depth,
+            coverage=self.coverage,
             network=self.network,
             process_info=self.process_info,
             node_command=self.node_command,

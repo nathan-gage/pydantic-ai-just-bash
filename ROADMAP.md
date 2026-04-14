@@ -33,40 +33,40 @@ Ordered roughly by priority.
 
 ## just-py-bash runtime support
 
-- [ ] Explicitly support the core `just-py-bash` session options on the wrapper API
-- [ ] Support and test `files`
-- [ ] Support and test `env`
-- [ ] Support and test `cwd`
-- [ ] Support and test `fs`
-- [ ] Support and test `execution_limits`
-- [ ] Support and test `python`
-- [ ] Support and test `javascript`
-- [ ] Support and test `commands`
-- [ ] Support and test `fetch`
-- [ ] Support and test `logger`
-- [ ] Support and test `trace`
-- [ ] Support and test `defense_in_depth`
-- [ ] Support and test `coverage`
-- [ ] Support and test `network`
-- [ ] Support and test `process_info`
-- [ ] Support and test `node_command`
-- [ ] Support and test `js_entry`
-- [ ] Support and test `package_json`
-- [ ] Make the `bash(...)` tool args map cleanly and intentionally to per-exec `just-py-bash` options
+- [x] Explicitly support the core `just-py-bash` session options on the wrapper API
+- [x] Support and test `files`
+- [x] Support and test `env`
+- [x] Support and test `cwd`
+- [x] Support and test `fs`
+- [x] Support and test `execution_limits`
+- [x] Support and test `python`
+- [x] Support and test `javascript`
+- [x] Support and test `commands`
+- [x] Support and test `fetch`
+- [x] Support and test `logger`
+- [x] Support and test `trace`
+- [x] Support and test `defense_in_depth`
+- [x] Support and test `coverage`
+- [x] Support and test `network`
+- [x] Support and test `process_info`
+- [x] Support and test `node_command`
+- [x] Support and test `js_entry`
+- [x] Support and test `package_json`
+- [x] Make the `bash(...)` tool args map cleanly and intentionally to per-exec `just-py-bash` options
 
 ## Filesystem support
 
-- [ ] Make filesystem support a first-class part of the package contract
-- [ ] Explicitly support and test `FileInit`
-- [ ] Explicitly support and test `LazyFile`
-- [ ] Explicitly support and test `InMemoryFs`
-- [ ] Explicitly support and test `OverlayFs`
-- [ ] Explicitly support and test `ReadWriteFs`
-- [ ] Explicitly support and test `MountableFs`
-- [ ] Explicitly support and test `MountConfig`
-- [ ] Add dedicated coverage for lazy file providers
-- [ ] Add dedicated coverage for mounted workspace-style setups
-- [ ] Keep persistent virtual filesystem behavior stable across multiple `bash` calls
+- [x] Make filesystem support a first-class part of the package contract
+- [x] Explicitly support and test `FileInit`
+- [x] Explicitly support and test `LazyFile`
+- [x] Explicitly support and test `InMemoryFs`
+- [x] Explicitly support and test `OverlayFs`
+- [x] Explicitly support and test `ReadWriteFs`
+- [x] Explicitly support and test `MountableFs`
+- [x] Explicitly support and test `MountConfig`
+- [x] Add dedicated coverage for lazy file providers
+- [x] Add dedicated coverage for mounted workspace-style setups
+- [x] Keep persistent virtual filesystem behavior stable across multiple `bash` calls
 
 ## Dynamic toolsets
 

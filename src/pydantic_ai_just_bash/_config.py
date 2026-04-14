@@ -4,22 +4,22 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generic
 
-from just_bash import (
-    AsyncBash,
-    AsyncCustomCommands,
-    JavaScriptConfig,
-    NetworkConfig,
-    ProcessInfo,
-)
+from just_bash import AsyncBash, AsyncCustomCommands, JavaScriptConfig, NetworkConfig, ProcessInfo
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.toolsets import AbstractToolset
 
 from ._types import (
     HelpArgumentRenamer,
+    JustBashBackendPath,
+    JustBashCoverageWriter,
+    JustBashDefenseInDepth,
     JustBashExecutionLimits,
+    JustBashFetchCallback,
     JustBashFileSystemConfig,
     JustBashInitialFileValue,
+    JustBashLogger,
     JustBashToolSelector,
+    JustBashTraceCallback,
 )
 
 if TYPE_CHECKING:
@@ -44,11 +44,16 @@ class JustBashToolsetConfig(Generic[AgentDepsT]):
     python: bool = False
     javascript: bool | JavaScriptConfig = False
     commands: Sequence[str] | None = None
+    fetch: JustBashFetchCallback | None = None
+    logger: JustBashLogger | None = None
+    trace: JustBashTraceCallback | None = None
+    defense_in_depth: JustBashDefenseInDepth | None = None
+    coverage: JustBashCoverageWriter | None = None
     network: NetworkConfig | None = None
     process_info: ProcessInfo | None = None
     node_command: Sequence[str] | None = None
-    js_entry: str | None = None
-    package_json: str | None = None
+    js_entry: JustBashBackendPath | None = None
+    package_json: JustBashBackendPath | None = None
 
     def build_toolset(self, wrapped: AbstractToolset[AgentDepsT]) -> JustBashToolset[AgentDepsT]:
         from ._toolset import JustBashToolset
@@ -71,6 +76,11 @@ class JustBashToolsetConfig(Generic[AgentDepsT]):
             python=self.python,
             javascript=self.javascript,
             commands=self.commands,
+            fetch=self.fetch,
+            logger=self.logger,
+            trace=self.trace,
+            defense_in_depth=self.defense_in_depth,
+            coverage=self.coverage,
             network=self.network,
             process_info=self.process_info,
             node_command=self.node_command,
@@ -88,6 +98,11 @@ class JustBashToolsetConfig(Generic[AgentDepsT]):
             python=self.python,
             javascript=self.javascript,
             commands=self.commands,
+            fetch=self.fetch,
+            logger=self.logger,
+            trace=self.trace,
+            defense_in_depth=self.defense_in_depth,
+            coverage=self.coverage,
             network=self.network,
             process_info=self.process_info,
             node_command=self.node_command,

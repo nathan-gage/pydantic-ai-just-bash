@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Self
 
 from just_bash import ExecutionLimits, JavaScriptConfig, NetworkConfig, ProcessInfo
+from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT
@@ -12,16 +13,24 @@ from pydantic_ai.toolsets import AbstractToolset
 from ._config import JustBashToolsetConfig
 from ._types import (
     HelpArgumentRenamer,
+    JustBashBackendPath,
+    JustBashCoverageWriter,
+    JustBashDefenseInDepth,
+    JustBashFetchCallback,
     JustBashFileSystemConfig,
     JustBashInitialFileValue,
+    JustBashLogger,
     JustBashToolSelector,
+    JustBashTraceCallback,
+    SpecBackendPath,
+    SpecDefenseInDepth,
     SpecFileSystemConfig,
     SpecInitialFileValue,
     SpecToolSelector,
 )
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class JustBash(AbstractCapability[AgentDepsT]):
     """Capability that adds a persistent just-bash executor and bash helpers.
 
@@ -48,11 +57,16 @@ class JustBash(AbstractCapability[AgentDepsT]):
     python: bool = False
     javascript: bool | JavaScriptConfig = False
     commands: Sequence[str] | None = None
+    fetch: JustBashFetchCallback | None = None
+    logger: JustBashLogger | None = None
+    trace: JustBashTraceCallback | None = None
+    defense_in_depth: JustBashDefenseInDepth | None = None
+    coverage: JustBashCoverageWriter | None = None
     network: NetworkConfig | None = None
     process_info: ProcessInfo | None = None
     node_command: Sequence[str] | None = None
-    js_entry: str | None = None
-    package_json: str | None = None
+    js_entry: JustBashBackendPath | None = None
+    package_json: JustBashBackendPath | None = None
 
     @classmethod
     def get_serialization_name(cls) -> str | None:
@@ -78,11 +92,16 @@ class JustBash(AbstractCapability[AgentDepsT]):
         python: bool = False,
         javascript: bool | JavaScriptConfig = False,
         commands: Sequence[str] | None = None,
+        fetch: None = None,
+        logger: None = None,
+        trace: None = None,
+        defense_in_depth: SpecDefenseInDepth | None = None,
+        coverage: None = None,
         network: NetworkConfig | None = None,
         process_info: ProcessInfo | None = None,
         node_command: Sequence[str] | None = None,
-        js_entry: str | None = None,
-        package_json: str | None = None,
+        js_entry: SpecBackendPath | None = None,
+        package_json: SpecBackendPath | None = None,
     ) -> Self:
         return cls(
             tool_name=tool_name,
@@ -101,6 +120,11 @@ class JustBash(AbstractCapability[AgentDepsT]):
             python=python,
             javascript=javascript,
             commands=commands,
+            fetch=fetch,
+            logger=logger,
+            trace=trace,
+            defense_in_depth=defense_in_depth,
+            coverage=coverage,
             network=network,
             process_info=process_info,
             node_command=node_command,
@@ -129,6 +153,11 @@ class JustBash(AbstractCapability[AgentDepsT]):
             python=self.python,
             javascript=self.javascript,
             commands=self.commands,
+            fetch=self.fetch,
+            logger=self.logger,
+            trace=self.trace,
+            defense_in_depth=self.defense_in_depth,
+            coverage=self.coverage,
             network=self.network,
             process_info=self.process_info,
             node_command=self.node_command,
