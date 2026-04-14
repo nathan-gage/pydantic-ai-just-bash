@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Generic
@@ -122,8 +123,8 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
     they also remain directly visible to the model, but you can hide them from the
     public tool list with `expose_wrapped_tools=False` for a shell-only mode.
 
-    Deferred tools remain hidden until discovered, following a progressive-disclosure
-    model.
+    Deferred tools remain hidden from the wrapper's public listings until discovered,
+    following a progressive-disclosure model.
     """
 
     def __init__(
@@ -195,7 +196,6 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         self._bash: AsyncBash | None = None
         self._shell_state: _ShellState[AgentDepsT] | None = None
         self._discovered_tools: set[str] = set()
-        self._bound_tool_commands: set[str] = set()
 
         self._bash_tool = Tool(
             self._run_bash,
@@ -347,7 +347,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
 
         bash = await self._ensure_bash(shell_state, reset_session=reset_session)
         result = await bash.exec(
-            script,
+            self._script_with_shell_command_prelude(shell_state, script),
             stdin=stdin,
             cwd=cwd,
             env=env,
@@ -437,10 +437,8 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         if reset_session:
             self._discovered_tools.clear()
             await self._close_bash()
-            self._bound_tool_commands.clear()
 
         if self._bash is None:
-            self._bound_tool_commands = set(shell_state.bindings_by_command)
             self._bash = self._toolset_config().build_bash(custom_commands=self._custom_commands())
 
         return self._bash
@@ -452,41 +450,12 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             await bash.close()
 
     def _custom_commands(self) -> dict[str, Any]:
-        commands: dict[str, Any] = {
+        return {
             self.list_tools_name: self._cmd_list_tools,
             self.describe_tool_name: self._cmd_describe_tool,
             self.call_tool_name: self._cmd_call_tool,
             self.search_tools_name: self._cmd_search_tools,
         }
-        for command_name in sorted(self._bound_tool_commands):
-            commands[command_name] = self._make_bound_tool_command(command_name)
-        return commands
-
-    def _make_bound_tool_command(self, command_name: str) -> Any:
-        async def _command(args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
-            return await self._cmd_bound_tool(command_name, args, ctx)
-
-        return _command
-
-    async def _cmd_bound_tool(
-        self,
-        command_name: str,
-        args: list[str],
-        ctx: AsyncCustomCommandContext,
-    ) -> dict[str, Any]:
-        shell_state = self._require_shell_state()
-        binding = shell_state.bindings_by_command.get(command_name)
-        if binding is None:
-            return self._cli_error_result(
-                command_name,
-                'command is not available in this shell session.',
-                exit_code=127,
-                hint=(
-                    f'Use {self.call_tool_name} <tool-or-command> --json {{...}} or rerun '
-                    f'{self.tool_name}(..., reset_session=True) if the wrapped toolset changed.'
-                ),
-            )
-        return await self._invoke_binding(binding, args, ctx)
 
     async def _cmd_call_tool(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
         if not args:
@@ -539,11 +508,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
     async def _cmd_list_tools(self, args: list[str], ctx: AsyncCustomCommandContext) -> dict[str, Any]:
         del args, ctx
         shell_state = self._require_shell_state()
-        visible_bindings = [
-            binding
-            for binding in self._visible_bindings(shell_state)
-            if binding.command_name in self._bound_tool_commands
-        ]
+        visible_bindings = self._visible_bindings(shell_state)
         lines = [binding.command_name for binding in visible_bindings]
         hidden_count = len([binding for binding in shell_state.bindings_by_tool.values() if binding.hidden])
         if hidden_count:
@@ -841,6 +806,22 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             command=binding.command_name,
             description=binding.shell_tool_def.description,
         )
+
+    def _script_with_shell_command_prelude(
+        self,
+        shell_state: _ShellState[AgentDepsT],
+        script: str,
+    ) -> str:
+        visible_bindings = self._visible_bindings(shell_state)
+        if not visible_bindings:
+            return script
+
+        prelude_lines = ['shopt -s expand_aliases']
+        for binding in visible_bindings:
+            alias_name = shlex.quote(binding.command_name)
+            alias_target = shlex.quote(shlex.join([self.call_tool_name, binding.command_name]))
+            prelude_lines.append(f'alias {alias_name}={alias_target}')
+        return '\n'.join([*prelude_lines, script])
 
     def _visible_bindings(self, shell_state: _ShellState[AgentDepsT]) -> list[_CommandBinding[AgentDepsT]]:
         return sorted(
