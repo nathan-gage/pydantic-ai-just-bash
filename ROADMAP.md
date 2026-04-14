@@ -70,12 +70,12 @@ Ordered roughly by priority.
 
 ## Dynamic toolsets
 
-- [ ] Support dynamic toolsets without requiring shell session reset
-- [ ] Refresh shell-visible commands as wrapped tool availability changes across run steps
-- [ ] Preserve the `just-py-bash` session and virtual filesystem during command refresh
-- [ ] Ensure deferred/discovered tools continue to work correctly with refreshed command sets
+- [x] Support dynamic toolsets without requiring shell session reset
+- [x] Refresh shell-visible commands as wrapped tool availability changes across run steps
+- [x] Preserve the `just-py-bash` session and virtual filesystem during command refresh
+- [x] Ensure deferred/discovered tools continue to work correctly with refreshed command sets
 - [ ] Add tests for context-dependent toolsets
-- [ ] Add tests for tool availability changing over time without losing shell state
+- [x] Add tests for tool availability changing over time without losing shell state
 
 ## Agent specs and YAML
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from just_bash import LazyFile
 from pydantic_ai import Agent, FunctionToolset, ToolCallPart
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tool_manager import ToolManager
+from pydantic_ai.tools import ToolDefinition
 
 from pydantic_ai_just_bash import (
     BashDescribeToolResult,
@@ -18,6 +21,16 @@ from pydantic_ai_just_bash import (
 from tests._helpers import build_run_context, build_shell_harness, open_bash
 
 pytestmark = pytest.mark.anyio
+
+
+def only_run_steps(*allowed_steps: int) -> Callable[[object, ToolDefinition], ToolDefinition | None]:
+    allowed = frozenset(allowed_steps)
+
+    def prepare(ctx: object, tool_def: ToolDefinition) -> ToolDefinition | None:
+        run_step = getattr(ctx, 'run_step', None)
+        return tool_def if run_step in allowed else None
+
+    return prepare
 
 
 async def test_bash_toolset_uses_new_default_public_names() -> None:
@@ -405,3 +418,83 @@ async def test_bash_reset_session_clears_filesystem() -> None:
 
     assert result.exit_code != 0
     assert 'note.txt' in result.stderr
+
+
+async def test_bash_refreshes_visible_commands_across_run_steps_without_resetting_session() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain(prepare=only_run_steps(0))
+    def first_tool() -> str:
+        """Return the first-step tool marker."""
+        return 'first\n'
+
+    @toolset.tool_plain(prepare=only_run_steps(1))
+    def second_tool() -> str:
+        """Return the second-step tool marker."""
+        return 'second\n'
+
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(0))
+        step0_result = await manager.handle_call(
+            ToolCallPart(tool_name='bash', args={'script': "printf 'persisted\\n' > note.txt && first_tool"})
+        )
+
+        manager = await manager.for_run_step(build_run_context(1))
+        list_result = await manager.handle_call(ToolCallPart(tool_name='bash_list_tools', args={}))
+        step1_result = await manager.handle_call(
+            ToolCallPart(tool_name='bash', args={'script': 'cat note.txt && second_tool'})
+        )
+        missing_old_command = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'first_tool'}))
+
+    assert isinstance(step0_result, BashExecutionResult)
+    assert isinstance(list_result, BashListToolsResult)
+    assert isinstance(step1_result, BashExecutionResult)
+    assert isinstance(missing_old_command, BashExecutionResult)
+    assert step0_result.stdout == 'first\n'
+    assert [command.command for command in list_result.commands] == ['second_tool']
+    assert step1_result.stdout == 'persisted\nsecond\n'
+    assert missing_old_command.exit_code != 0
+    assert 'first_tool' in missing_old_command.stderr
+
+
+async def test_bash_preserves_discovered_deferred_commands_across_run_step_refresh() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain(prepare=only_run_steps(0))
+    def first_tool() -> str:
+        """Return the first-step tool marker."""
+        return 'first\n'
+
+    @toolset.tool_plain(prepare=only_run_steps(1))
+    def second_tool() -> str:
+        """Return the second-step tool marker."""
+        return 'second\n'
+
+    @toolset.tool_plain(defer_loading=True, prepare=only_run_steps(0, 1))
+    def stock_lookup(symbol: str) -> str:
+        """Look up a stock price by ticker symbol."""
+        return f'{symbol}=150.00\n'
+
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(0))
+        discover_and_call = await manager.handle_call(
+            ToolCallPart(
+                tool_name='bash',
+                args={
+                    'script': 'bash_search_tools stock >/dev/null && stock_lookup AAPL && printf "saved\\n" > note.txt'
+                },
+            )
+        )
+
+        manager = await manager.for_run_step(build_run_context(1))
+        list_result = await manager.handle_call(ToolCallPart(tool_name='bash_list_tools', args={}))
+        step1_result = await manager.handle_call(
+            ToolCallPart(tool_name='bash', args={'script': 'cat note.txt && stock_lookup MSFT && second_tool'})
+        )
+
+    assert isinstance(discover_and_call, BashExecutionResult)
+    assert isinstance(list_result, BashListToolsResult)
+    assert isinstance(step1_result, BashExecutionResult)
+    assert discover_and_call.stdout == 'AAPL=150.00\n'
+    assert [command.command for command in list_result.commands] == ['second_tool', 'stock_lookup']
+    assert step1_result.stdout == 'saved\nMSFT=150.00\nsecond\n'
