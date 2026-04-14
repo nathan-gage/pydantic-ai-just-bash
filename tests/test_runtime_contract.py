@@ -174,6 +174,34 @@ async def test_bash_wrapper_executes_packaged_javascript_bootstrap_through_shell
     assert result.stderr == ''
 
 
+async def test_bash_wrapper_keeps_session_usable_after_packaged_javascript_exec_timeout() -> None:
+    backend = packaged_backend_config()
+
+    async with JustBashToolset(
+        FunctionToolset[None](),
+        files={'/workspace/seed.txt': 'seed\n'},
+        cwd='/workspace',
+        javascript=True,
+        node_command=backend.node_command,
+        js_entry=backend.js_entry,
+        package_json=backend.package_json,
+    ) as wrapped:
+        shell = await build_shell_harness(wrapped)
+        timeout_result = await shell.run("js-exec -c 'while(true){}'", timeout=0.01)
+        follow_up = await shell.run('cat seed.txt', timeout=60)
+
+    assert timeout_result.stdout == ''
+    if timeout_result.exit_code == 124:
+        assert 'execution timeout exceeded' in timeout_result.stderr
+        assert 'session was reset' in timeout_result.stderr
+    else:
+        assert timeout_result.exit_code == 1
+        assert 'interrupted' in timeout_result.stderr
+    assert follow_up.exit_code == 0
+    assert follow_up.stdout == 'seed\n'
+    assert follow_up.stderr == ''
+
+
 async def test_bash_wrapper_supports_execution_limits() -> None:
     async with JustBashToolset(
         FunctionToolset[None](),
