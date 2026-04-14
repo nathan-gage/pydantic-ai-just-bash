@@ -9,7 +9,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.tools import AgentDepsT
 from pydantic_ai.toolsets import AbstractToolset
 
-from ._toolset import JustBashToolset
+from ._config import JustBashToolsetConfig
 from ._types import (
     HelpArgumentRenamer,
     JustBashFileSystemConfig,
@@ -109,8 +109,10 @@ class JustBash(AbstractCapability[AgentDepsT]):
         )
 
     def get_wrapper_toolset(self, toolset: AbstractToolset[AgentDepsT]) -> AbstractToolset[AgentDepsT] | None:
-        return JustBashToolset(
-            wrapped=toolset,
+        return self._toolset_config().build_toolset(toolset)
+
+    def _toolset_config(self) -> JustBashToolsetConfig[AgentDepsT]:
+        return JustBashToolsetConfig(
             tool_name=self.tool_name,
             command_prefix=self.command_prefix,
             helper_prefix=self.helper_prefix,

@@ -364,6 +364,29 @@ async def test_bash_capability_exposes_bash_public_tools_to_agent_by_default() -
     assert 'greet' in tool_names
 
 
+async def test_bash_capability_forwards_wrapper_configuration() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain
+    def echo(text: str) -> str:
+        """Echo text."""
+        return text
+
+    capability = JustBash(tool_name='shellbox', command_prefix='cmd_', helper_prefix='jb_')
+    wrapped = capability.get_wrapper_toolset(toolset)
+
+    assert isinstance(wrapped, JustBashToolset)
+
+    async with wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+        result = await manager.handle_call(
+            ToolCallPart(tool_name='shellbox', args={'script': 'jb_list_tools && cmd_echo hi'})
+        )
+
+    assert 'cmd_echo' in result.stdout
+    assert result.stdout.strip().endswith('hi')
+
+
 async def test_bash_capability_supports_shell_only_mode() -> None:
     model = TestModel(call_tools=[])
     agent = Agent(model, capabilities=[JustBash(expose_wrapped_tools=False)])
