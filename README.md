@@ -17,7 +17,9 @@ It is designed to let an agent mix shell workflows with normal Pydantic AI tool 
 - Give an agent a persistent bash-like environment without a real OS shell
 - Expose normal Pydantic AI tools as shell commands
 - Keep deferred tools hidden until the model discovers them with shell-side search
-- Reuse `just-py-bash` session controls like `files`, `env`, `cwd`, `fs`, `python`, and `javascript`
+- Reuse `just-py-bash` session controls like `files`, `env`, `cwd`, `fs`, `python`, `javascript`, and `execution_limits`
+- Plug in Python-side hooks for `fetch`, `logger`, `trace`, `defense_in_depth`, and `coverage`
+- Bootstrap virtual filesystems and mounted workspaces with `FileInit`, `LazyFile`, `InMemoryFs`, `OverlayFs`, `ReadWriteFs`, and `MountableFs`
 - Return structured execution results instead of raw subprocess plumbing
 
 ## Install
@@ -101,7 +103,9 @@ Common configuration knobs include:
 - `help_flag_name`
 - `rename_help_argument`
 - `files`, `env`, `cwd`, `fs`, `execution_limits`
-- `python`, `javascript`, `commands`, `network`, `process_info`
+- `python`, `javascript`, `commands`
+- `fetch`, `logger`, `trace`, `defense_in_depth`, `coverage`
+- `network`, `process_info`
 - `node_command`, `js_entry`, `package_json`
 
 ### `JustBashToolset`
@@ -161,7 +165,7 @@ uv add 'pydantic-ai-just-bash[spec]'
 The current spec-safe surface includes the public `JustBash` fields, including:
 
 - shell naming/config fields like `tool_name`, `command_prefix`, `helper_prefix`, `instructions`, `help_flag_name`, and `expose_wrapped_tools`
-- runtime/session fields like `env`, `cwd`, `execution_limits`, `python`, `javascript`, `commands`, `network`, `process_info`, `node_command`, `js_entry`, and `package_json`
+- runtime/session fields like `env`, `cwd`, `execution_limits`, `python`, `javascript`, `commands`, `defense_in_depth`, `network`, `process_info`, `node_command`, `js_entry`, and `package_json`
 - filesystem configuration via `files` and `fs`
 - spec-friendly file values such as plain text/bytes, `FileInit`, and `LazyFile` with a static `provider` value
 - string-based `rename_help_argument` values
@@ -174,6 +178,8 @@ The current Python-only surface includes:
 
 - callable `exposed_tools` selectors
 - callback-based lazy file providers, either passed directly or wrapped in `LazyFile(...)`
+- runtime hooks passed via `fetch`, `logger`, `trace`, and `coverage`
+- callback-based `defense_in_depth.on_violation` hooks
 - callable `rename_help_argument` values
 
 For example:
@@ -190,6 +196,36 @@ cap = JustBash(
 ```
 
 That callable form is supported when you configure `JustBash(...)` in Python, but it is not spec/YAML-serializable.
+
+## Runtime session contract
+
+The wrapper now treats the core `just-py-bash` session options as part of its public contract.
+
+Session-level options passed to `JustBash(...)` or `JustBashToolset(...)` are forwarded to the persistent `AsyncBash` instance for the run, including:
+
+- shell state and files: `files`, `env`, `cwd`, `fs`, `execution_limits`
+- language/runtime toggles: `python`, `javascript`, `commands`
+- Python-only runtime hooks: `fetch`, `logger`, `trace`, `defense_in_depth`, `coverage`
+- backend/runtime metadata: `network`, `process_info`, `node_command`, `js_entry`, `package_json`
+
+### Filesystem support
+
+Filesystem setup is a first-class part of the wrapper contract.
+
+You can seed files directly with `files=...`, including:
+
+- plain text/bytes
+- `FileInit(...)` for explicit metadata like mode
+- `LazyFile(...)` or callback-based lazy file providers in Python
+
+You can also configure `fs=...` with the core `just-py-bash` filesystem types:
+
+- `InMemoryFs`
+- `OverlayFs`
+- `ReadWriteFs`
+- `MountableFs`, with `MountConfig(...)` for mounted workspace-style layouts
+
+Those filesystem choices persist across multiple `bash` calls for the lifetime of the run, so mounted workspaces and virtual edits remain stable until you reset the session.
 
 ## Public helper tools
 
@@ -256,6 +292,21 @@ JustBash(rename_help_argument='{tool_name}_{arg_name}')
 ```
 
 would expose a tool argument named `help` as `--<tool_name>_help` in the shell, and generated help text will explain that rename explicitly.
+
+## `bash(...)` per-exec options
+
+The top-level `bash` tool keeps a persistent session, but each call can still override execution-local options.
+
+| `bash(...)` arg | Effect |
+| --- | --- |
+| `stdin` | Provide stdin for this execution only |
+| `cwd` | Override the working directory for this execution only |
+| `env` | Add or override env vars for this execution only |
+| `replace_env` | Replace the session env instead of merging it |
+| `args` | Pass argv-style extra arguments into this execution |
+| `timeout` | Interrupt this execution if it runs too long |
+| `raw_script` | Skip script normalization before execution |
+| `reset_session` | Recreate the persistent shell before running the script |
 
 ## Behavior notes
 
