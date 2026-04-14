@@ -39,7 +39,7 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
-dependencies = ["just-py-bash>=2.14.1,<3", "pydantic-ai-slim>=1.71.0,<2"]
+dependencies = ["just-py-bash>=2.14.2,<3", "pydantic-ai-slim>=1.71.0,<2"]
 
 [project.urls]
 Homepage = "https://github.com/nathan-gage/pydantic-ai-just-bash"
