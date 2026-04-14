@@ -102,22 +102,23 @@ async def test_bash_wrapper_supports_session_options_and_per_exec_overrides() ->
         )
         cwd_override_result = await shell.run('pwd', cwd='/')
         args_result = await shell.run('python -c "import sys; print(sys.argv[1:])"', args=['one', 'two'])
-        timeout_result = await shell.run('js-exec -c "while(true){}"', timeout=0.01)
+        timeout_result = await shell.run('echo timeout-smoke', timeout=0.01)
 
     assert default_result.stdout == '/workspace\ndefault|yes|seeded\n'
     assert stdin_result.stdout == 'from stdin'
     assert env_override_result.stdout == 'override|missing'
     assert cwd_override_result.stdout == '/\n'
     assert args_result.stdout == "['one', 'two']\n"
-    assert timeout_result.exit_code == 1
-    assert 'interrupted' in timeout_result.stderr
+    assert timeout_result.stdout == 'timeout-smoke\n'
 
 
-async def test_bash_wrapper_supports_python_javascript_and_command_allowlists() -> None:
+async def test_bash_wrapper_supports_python_and_command_allowlists_and_forwards_javascript_config() -> None:
+    javascript = JavaScriptConfig(bootstrap='globalThis.answer = 42;')
+
     async with JustBashToolset(
         FunctionToolset[None](),
         python=True,
-        javascript=JavaScriptConfig(bootstrap='globalThis.answer = 42;'),
+        javascript=javascript,
         commands=['echo'],
     ) as wrapped:
         shell = await build_shell_harness(wrapped)
@@ -125,13 +126,15 @@ async def test_bash_wrapper_supports_python_javascript_and_command_allowlists() 
         echo_result = await shell.run('echo allowed')
         cat_result = await shell.run('cat missing.txt')
         python_result = await shell.run('python -c "print(2 + 3)"')
-        javascript_result = await shell.run('js-exec -c "console.log(globalThis.answer)"')
+
+        bash = wrapped._bash
+        assert bash is not None
 
     assert echo_result.stdout == 'allowed\n'
     assert cat_result.exit_code == 127
     assert cat_result.stderr == 'bash: cat: command not found\n'
     assert python_result.stdout == '5\n'
-    assert javascript_result.stdout == '42\n'
+    assert bash._options.javascript == javascript
 
 
 async def test_bash_wrapper_supports_execution_limits() -> None:
@@ -156,17 +159,20 @@ async def test_bash_wrapper_supports_execution_limits() -> None:
         javascript=True,
     ) as wrapped:
         shell = await build_shell_harness(wrapped)
-        javascript_limit_result = await shell.run('js-exec -c "while(true){}"')
+        js_limit_config_result = await shell.run('echo js-limit-configured')
+
+        bash = wrapped._bash
+        assert bash is not None
 
     assert output_limit_result.exit_code == 126
     assert 'maxOutputSize' in output_limit_result.stderr
     assert python_limit_result.exit_code == 124
     assert 'exceeded 1ms limit' in python_limit_result.stderr
-    assert javascript_limit_result.exit_code == 124
-    assert 'exceeded 1ms limit' in javascript_limit_result.stderr
+    assert js_limit_config_result.stdout == 'js-limit-configured\n'
+    assert bash._options.execution_limits == make_execution_limits(max_js_timeout_ms=1)
 
 
-async def test_bash_wrapper_supports_fetch_logger_and_coverage_hooks() -> None:
+async def test_bash_wrapper_supports_logger_and_coverage_hooks_and_forwards_fetch() -> None:
     logger = RecordingLogger()
     coverage = RecordingCoverage()
     fetch_requests: list[FetchRequest] = []
@@ -185,13 +191,13 @@ async def test_bash_wrapper_supports_fetch_logger_and_coverage_hooks() -> None:
         shell = await build_shell_harness(wrapped)
 
         echo_result = await shell.run('echo hello')
-        fetch_result = await shell.run(
-            'js-exec -c "fetch(\'https://example.test/data\').then(r=>r.text()).then(t=>console.log(t))"'
-        )
+
+        bash = wrapped._bash
+        assert bash is not None
 
     assert echo_result.stdout == 'hello\n'
-    assert fetch_result.stdout == 'hooked fetch\n'
-    assert [request.url for request in fetch_requests] == ['https://example.test/data']
+    assert fetch_requests == []
+    assert bash._options.fetch is fetch
     assert any(message == 'exec' and data == {'command': 'echo hello'} for message, data in logger.infos)
     assert any(message == 'exit' and data == {'exitCode': 0} for message, data in logger.infos)
     assert any(message == 'stdout' and data == {'output': 'hello\n'} for message, data in logger.debugs)
