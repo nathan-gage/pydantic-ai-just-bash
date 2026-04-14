@@ -82,6 +82,25 @@ class RecordingCoverage:
         self.hits.append(feature)
 
 
+@dataclass(frozen=True, slots=True)
+class PackagedBackendConfig:
+    node_command: tuple[str, ...]
+    js_entry: Path
+    package_json: Path
+
+
+def packaged_backend_config() -> PackagedBackendConfig:
+    artifacts = resolve_backend_artifacts()
+    node_path = shutil.which('node')
+    if node_path is None:  # pragma: no cover
+        pytest.skip('Node.js is required for just-bash runtime tests.')
+    return PackagedBackendConfig(
+        node_command=(node_path,),
+        js_entry=artifacts.js_entry,
+        package_json=artifacts.package_json,
+    )
+
+
 async def test_bash_wrapper_supports_session_options_and_per_exec_overrides() -> None:
     async with JustBashToolset(
         FunctionToolset[None](),
@@ -135,6 +154,24 @@ async def test_bash_wrapper_supports_python_and_command_allowlists_and_forwards_
     assert cat_result.stderr == 'bash: cat: command not found\n'
     assert python_result.stdout == '5\n'
     assert bash._options.javascript == javascript
+
+
+async def test_bash_wrapper_executes_packaged_javascript_bootstrap_through_shell() -> None:
+    backend = packaged_backend_config()
+
+    async with JustBashToolset(
+        FunctionToolset[None](),
+        javascript=JavaScriptConfig(bootstrap="globalThis.prefix = 'bootstrapped';"),
+        node_command=backend.node_command,
+        js_entry=backend.js_entry,
+        package_json=backend.package_json,
+    ) as wrapped:
+        shell = await build_shell_harness(wrapped)
+        result = await shell.run('js-exec -c \'console.log(globalThis.prefix + ":" + (2 + 3))\'', timeout=60)
+
+    assert result.exit_code == 0
+    assert result.stdout == 'bootstrapped:5\n'
+    assert result.stderr == ''
 
 
 async def test_bash_wrapper_supports_execution_limits() -> None:
@@ -202,6 +239,47 @@ async def test_bash_wrapper_supports_logger_and_coverage_hooks_and_forwards_fetc
     assert any(message == 'exit' and data == {'exitCode': 0} for message, data in logger.infos)
     assert any(message == 'stdout' and data == {'output': 'hello\n'} for message, data in logger.debugs)
     assert 'bash:builtin:echo' in coverage.hits
+
+
+async def test_bash_wrapper_round_trips_packaged_javascript_fetch_with_wrapper_hooks() -> None:
+    backend = packaged_backend_config()
+    logger = RecordingLogger()
+    coverage = RecordingCoverage()
+    fetch_requests: list[FetchRequest] = []
+
+    async def fetch(request: FetchRequest) -> FetchResult:
+        fetch_requests.append(request)
+        return FetchResult(
+            status=200,
+            status_text='OK',
+            headers={'content-type': 'text/plain'},
+            body='hooked fetch',
+            url=request.url,
+        )
+
+    async with JustBashToolset(
+        FunctionToolset[None](),
+        javascript=True,
+        fetch=fetch,
+        logger=logger,
+        coverage=coverage,
+        node_command=backend.node_command,
+        js_entry=backend.js_entry,
+        package_json=backend.package_json,
+    ) as wrapped:
+        shell = await build_shell_harness(wrapped)
+        result = await shell.run(
+            'js-exec -c "fetch(\'https://example.com\').then(r=>r.text()).then(t=>console.log(t))"',
+            timeout=60,
+        )
+
+    assert result.exit_code == 0
+    assert result.stdout == 'hooked fetch\n'
+    assert result.stderr == ''
+    assert [(request.method, request.url) for request in fetch_requests] == [('GET', 'https://example.com')]
+    assert any(message == 'exec' for message, _ in logger.infos)
+    assert any(message == 'exit' and data == {'exitCode': 0} for message, data in logger.infos)
+    assert coverage.hits
 
 
 async def test_bash_wrapper_passes_through_backend_overrides_and_opaque_runtime_options() -> None:
