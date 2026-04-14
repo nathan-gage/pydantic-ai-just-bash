@@ -205,14 +205,14 @@ async def test_shell_helpers_use_bash_names() -> None:
 
     async with open_bash(toolset) as shell:
         list_result = await shell.run('bash_list_tools')
-        search_result = await shell.run('bash_search_tools stock && stock_lookup AAPL')
+        search_result = await shell.run('bash_search_tools stock >/dev/null && bash_call_tool stock_lookup AAPL')
 
     assert 'visible' in list_result.stdout
     assert 'bash_search_tools' in list_result.stdout
-    assert 'AAPL' in search_result.stdout
+    assert search_result.stdout == 'AAPL'
 
 
-async def test_hidden_shell_commands_can_appear_in_shell_introspection_before_discovery() -> None:
+async def test_deferred_commands_require_bash_call_tool_for_same_script_immediate_use() -> None:
     toolset = FunctionToolset[None]()
 
     @toolset.tool_plain(defer_loading=True)
@@ -221,16 +221,23 @@ async def test_hidden_shell_commands_can_appear_in_shell_introspection_before_di
         return f'{symbol}=150.00'
 
     async with open_bash(toolset) as shell:
-        before_discovery = await shell.run('type -t stock_lookup')
-        hidden_call = await shell.run('stock_lookup AAPL')
-        discovered_call = await shell.run('bash_search_tools stock >/dev/null && stock_lookup AAPL')
+        before_discovery = await shell.run('type -t stock_lookup >/dev/null || printf missing')
+        direct_before_discovery = await shell.run('stock_lookup AAPL')
+        helper_before_discovery = await shell.run('bash_call_tool stock_lookup AAPL')
+        discovered_same_script = await shell.run(
+            'bash_search_tools stock >/dev/null && bash_call_tool stock_lookup AAPL'
+        )
         after_discovery = await shell.run('type -t stock_lookup')
+        next_exec_direct = await shell.run('stock_lookup MSFT')
 
-    assert before_discovery.stdout.strip() == 'alias'
-    assert hidden_call.exit_code == 127
-    assert 'command is hidden until it is discovered' in hidden_call.stderr
-    assert discovered_call.stdout == 'AAPL=150.00'
+    assert before_discovery.stdout == 'missing'
+    assert direct_before_discovery.exit_code == 127
+    assert 'stock_lookup' in direct_before_discovery.stderr
+    assert helper_before_discovery.exit_code == 127
+    assert 'command is hidden until it is discovered' in helper_before_discovery.stderr
+    assert discovered_same_script.stdout == 'AAPL=150.00'
     assert after_discovery.stdout.strip() == 'alias'
+    assert next_exec_direct.stdout == 'MSFT=150.00'
 
 
 async def test_bash_bound_commands_support_help_flag() -> None:
@@ -502,7 +509,7 @@ async def test_bash_preserves_discovered_deferred_commands_across_run_step_refre
             ToolCallPart(
                 tool_name='bash',
                 args={
-                    'script': 'bash_search_tools stock >/dev/null && stock_lookup AAPL && printf "saved\\n" > note.txt'
+                    'script': 'bash_search_tools stock >/dev/null && bash_call_tool stock_lookup AAPL && printf "saved\\n" > note.txt'
                 },
             )
         )

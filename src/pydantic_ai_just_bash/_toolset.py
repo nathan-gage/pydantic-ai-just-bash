@@ -812,13 +812,14 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         shell_state: _ShellState[AgentDepsT],
         script: str,
     ) -> str:
-        if not shell_state.bindings_by_command:
+        visible_bindings = self._visible_bindings(shell_state)
+        if not visible_bindings:
             return script
 
         prelude_lines = ['shopt -s expand_aliases']
-        for command_name in sorted(shell_state.bindings_by_command):
-            alias_name = shlex.quote(command_name)
-            alias_target = shlex.quote(shlex.join([self.call_tool_name, command_name]))
+        for binding in visible_bindings:
+            alias_name = shlex.quote(binding.command_name)
+            alias_target = shlex.quote(shlex.join([self.call_tool_name, binding.command_name]))
             prelude_lines.append(f'alias {alias_name}={alias_target}')
         return '\n'.join([*prelude_lines, script])
 

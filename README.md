@@ -314,10 +314,10 @@ The top-level `bash` tool keeps a persistent session, but each call can still ov
 - Wrapped tools stay directly visible by default; set `expose_wrapped_tools=False` for shell-only mode.
 - Bound shell commands refresh automatically as wrapped tool availability changes across run steps, without recreating the persistent shell session.
 - Context-dependent tools can therefore appear or disappear across run steps while the shell filesystem stays intact.
-- Deferred tools do not appear in `bash_list_tools` until discovered with `bash_search_tools`.
-- Before discovery, direct invocation of a deferred command returns a discover-first error.
-- After discovery, that command can be used later in the same script and in later shell executions until `bash(..., reset_session=True)` clears the session.
-- Caveat: low-level shell introspection such as `alias` or `type -t` may show deferred command names before discovery.
+- Deferred tools do not appear in `bash_list_tools`, `alias`, or `type -t` until discovered with `bash_search_tools`.
+- Before discovery, deferred tools are not directly callable as shell commands.
+- If you discover a deferred tool and need to invoke it later in the same script, use `bash_call_tool <tool-or-command> ...`.
+- After discovery, the direct shell command form becomes available on later shell executions until `bash(..., reset_session=True)` clears the session.
 - Shell command failures are formatted as CLI-style stderr messages instead of leaking raw framework internals where possible.
 - Direct shell commands return the tool result. If a wrapped tool returns `ToolReturn`, the shell uses its `return_value`.
 
