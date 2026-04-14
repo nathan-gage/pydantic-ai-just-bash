@@ -485,6 +485,45 @@ async def test_bash_refreshes_visible_commands_across_run_steps_without_resettin
     assert 'first_tool' in missing_old_command.stderr
 
 
+async def test_bash_reports_future_commands_as_unavailable_until_their_run_step() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain(prepare=only_run_steps(0))
+    def first_tool() -> str:
+        """Return the first-step tool marker."""
+        return 'first\n'
+
+    @toolset.tool_plain(prepare=only_run_steps(1))
+    def second_tool() -> str:
+        """Return the second-step tool marker."""
+        return 'second\n'
+
+    async with JustBashToolset(toolset) as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(0))
+        before_list = await manager.handle_call(ToolCallPart(tool_name='bash_list_tools', args={}))
+        before_direct = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'second_tool'}))
+        before_helper = await manager.handle_call(
+            ToolCallPart(tool_name='bash', args={'script': 'bash_call_tool second_tool'})
+        )
+
+        manager = await manager.for_run_step(build_run_context(1))
+        after_list = await manager.handle_call(ToolCallPart(tool_name='bash_list_tools', args={}))
+        after_direct = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'second_tool'}))
+
+    assert isinstance(before_list, BashListToolsResult)
+    assert isinstance(before_direct, BashExecutionResult)
+    assert isinstance(before_helper, BashExecutionResult)
+    assert isinstance(after_list, BashListToolsResult)
+    assert isinstance(after_direct, BashExecutionResult)
+    assert [command.command for command in before_list.commands] == ['first_tool']
+    assert before_direct.exit_code != 0
+    assert 'second_tool' in before_direct.stderr
+    assert before_helper.exit_code == 127
+    assert "unknown tool or command 'second_tool'" in before_helper.stderr
+    assert [command.command for command in after_list.commands] == ['second_tool']
+    assert after_direct.stdout == 'second\n'
+
+
 async def test_bash_preserves_discovered_deferred_commands_across_run_step_refresh() -> None:
     toolset = FunctionToolset[None]()
 
