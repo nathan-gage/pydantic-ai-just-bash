@@ -313,23 +313,13 @@ The top-level `bash` tool keeps a persistent session, but each call can still ov
 - The shell session is persistent for a run, so virtual filesystem changes carry across `bash` calls.
 - Wrapped tools stay directly visible by default; set `expose_wrapped_tools=False` for shell-only mode.
 - Bound shell commands refresh automatically as wrapped tool availability changes across run steps, without recreating the persistent shell session.
-- Deferred tools stay out of `bash_list_tools` until discovered with `bash_search_tools`, and discovered commands remain available across later run steps until you call `bash(..., reset_session=True)`.
-- Current implementation note: to keep dynamic command refresh simple and dependency-free, the wrapper predeclares shell aliases for all bound command names on each execution. That means low-level shell introspection such as `alias` or `type -t` may reveal deferred command names before discovery, even though direct invocation still returns the discover-first error until `bash_search_tools` unhides them.
+- Context-dependent tools can therefore appear or disappear across run steps while the shell filesystem stays intact.
+- Deferred tools do not appear in `bash_list_tools` until discovered with `bash_search_tools`.
+- Before discovery, direct invocation of a deferred command returns a discover-first error.
+- After discovery, that command can be used later in the same script and in later shell executions until `bash(..., reset_session=True)` clears the session.
+- Caveat: low-level shell introspection such as `alias` or `type -t` may show deferred command names before discovery.
 - Shell command failures are formatted as CLI-style stderr messages instead of leaking raw framework internals where possible.
 - Direct shell commands return the tool result. If a wrapped tool returns `ToolReturn`, the shell uses its `return_value`.
-
-## Dynamic tool refresh
-
-`JustBashToolset` rebuilds its shell command bindings from the current wrapped toolset on each `bash(...)` execution.
-
-That means context-dependent tools exposed through `prepare=...` or other selectors can appear or disappear across run steps **without** losing the persistent `just-py-bash` session or virtual filesystem state.
-
-Deferred tools follow the same rule:
-
-- before discovery, hidden commands do not appear in `bash_list_tools`
-- low-level shell introspection such as `alias` or `type -t` may still show deferred command names before discovery
-- `bash_search_tools <keywords>` unhides matching deferred commands
-- once discovered, those commands can be used later in the same script and remain directly available in later shell executions until `bash(..., reset_session=True)` clears the session
 
 ## Development
 
