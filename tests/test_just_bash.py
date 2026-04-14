@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-from typing import TypeVar
-
 import pytest
 from just_bash import LazyFile
 from pydantic_ai import Agent, FunctionToolset, ToolCallPart
-from pydantic_ai._run_context import RunContext
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tool_manager import ToolManager
-from pydantic_ai.usage import RunUsage
 
 from pydantic_ai_just_bash import (
     BashDescribeToolResult,
@@ -19,26 +15,14 @@ from pydantic_ai_just_bash import (
     JustBash,
     JustBashToolset,
 )
+from tests._helpers import build_run_context, build_shell_harness, open_bash
 
 pytestmark = pytest.mark.anyio
-
-T = TypeVar('T')
-
-
-def build_run_context(deps: T, run_step: int = 0) -> RunContext[T]:
-    return RunContext(
-        deps=deps,
-        model=TestModel(),
-        usage=RunUsage(),
-        prompt=None,
-        messages=[],
-        run_step=run_step,
-    )
 
 
 async def test_bash_toolset_uses_new_default_public_names() -> None:
     wrapped = JustBashToolset(FunctionToolset[None]())
-    tools = await wrapped.get_tools(build_run_context(None))
+    tools = await wrapped.get_tools(build_run_context())
 
     assert 'bash' in tools
     assert 'bash_list_tools' in tools
@@ -55,9 +39,8 @@ async def test_bash_tool_executes_visible_tool_command() -> None:
         """Greet a user."""
         return f'hello, {name}'
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'greet world'}))
+    async with open_bash(toolset) as shell:
+        result = await shell.run('greet world')
 
     assert isinstance(result, BashExecutionResult)
     assert result.stdout == 'hello, world'
@@ -74,23 +57,43 @@ async def test_bash_toolset_supports_json_and_flag_binding() -> None:
         """Add two numbers."""
         return a + b
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        flag_result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'add --a 2 --b 5'}))
-        json_result = await manager.handle_call(
-            ToolCallPart(tool_name='bash', args={'script': 'add --json \'{"a": 3, "b": 4}\''})
-        )
+    async with open_bash(toolset) as shell:
+        flag_result = await shell.run('add --a 2 --b 5')
+        json_result = await shell.run('add --json \'{"a": 3, "b": 4}\'')
 
     assert flag_result.stdout == '7'
     assert json_result.stdout == '7'
 
 
-async def test_bash_tool_persists_filesystem_across_calls() -> None:
-    async with JustBashToolset(FunctionToolset[None]()) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': "printf 'hello from fs' > note.txt"}))
-        read_result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'cat note.txt'}))
+async def test_bash_toolset_supports_boolean_flags_and_array_positionals() -> None:
+    toolset = FunctionToolset[None]()
 
+    @toolset.tool_plain
+    def flag_to_int(enabled: bool) -> int:
+        """Convert a boolean flag to an integer."""
+        return 1 if enabled else 0
+
+    @toolset.tool_plain
+    def join_lines(lines: list[str]) -> str:
+        """Join stdin lines."""
+        return ','.join(lines)
+
+    async with open_bash(toolset) as shell:
+        enabled_result = await shell.run('flag_to_int --enabled')
+        disabled_result = await shell.run('flag_to_int --no-enabled')
+        positional_result = await shell.run('join_lines one two')
+
+    assert enabled_result.stdout == '1'
+    assert disabled_result.stdout == '0'
+    assert positional_result.stdout == 'one,two'
+
+
+async def test_bash_tool_persists_filesystem_across_calls() -> None:
+    async with open_bash(FunctionToolset[None]()) as shell:
+        write_result = await shell.run("printf 'hello from fs' > note.txt")
+        read_result = await shell.run('cat note.txt')
+
+    assert write_result.exit_code == 0
     assert read_result.stdout == 'hello from fs'
 
 
@@ -103,8 +106,8 @@ async def test_bash_toolset_can_hide_wrapped_tools_but_keep_shell_commands() -> 
         return f'hello, {name}'
 
     async with JustBashToolset(toolset, expose_wrapped_tools=False) as wrapped:
-        tools = await wrapped.get_tools(build_run_context(None))
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+        tools = await wrapped.get_tools(build_run_context())
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context())
         result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'greet world'}))
 
     assert 'greet' not in tools
@@ -126,7 +129,7 @@ async def test_bash_list_tools_exposed_as_top_level_tool() -> None:
         return symbol
 
     async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context())
         result = await manager.handle_call(ToolCallPart(tool_name='bash_list_tools', args={}))
 
     assert isinstance(result, BashListToolsResult)
@@ -143,7 +146,7 @@ async def test_bash_search_tools_exposed_as_top_level_tool_and_unhides_commands(
         return f'{symbol}=150.00'
 
     async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context())
         search_result = await manager.handle_call(
             ToolCallPart(tool_name='bash_search_tools', args={'keywords': 'stock'})
         )
@@ -163,7 +166,7 @@ async def test_bash_describe_tool_returns_generated_help() -> None:
         return f'hello, {name}'
 
     async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context())
         result = await manager.handle_call(ToolCallPart(tool_name='bash_describe_tool', args={'name': 'greet'}))
 
     assert isinstance(result, BashDescribeToolResult)
@@ -187,12 +190,9 @@ async def test_shell_helpers_use_bash_names() -> None:
         """Look up a stock price."""
         return symbol
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        list_result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'bash_list_tools'}))
-        search_result = await manager.handle_call(
-            ToolCallPart(tool_name='bash', args={'script': 'bash_search_tools stock && stock_lookup AAPL'})
-        )
+    async with open_bash(toolset) as shell:
+        list_result = await shell.run('bash_list_tools')
+        search_result = await shell.run('bash_search_tools stock && stock_lookup AAPL')
 
     assert 'visible' in list_result.stdout
     assert 'bash_search_tools' in list_result.stdout
@@ -207,9 +207,8 @@ async def test_bash_bound_commands_support_help_flag() -> None:
         """Greet a user."""
         return f'hello, {name}'
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'greet --help'}))
+    async with open_bash(toolset) as shell:
+        result = await shell.run('greet --help')
 
     assert result.exit_code == 0
     assert 'USAGE' in result.stdout
@@ -225,9 +224,8 @@ async def test_bash_bound_commands_support_double_dash_for_literal_values() -> N
         """Show a literal value."""
         return text
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'show_value -- --help'}))
+    async with open_bash(toolset) as shell:
+        result = await shell.run('show_value -- --help')
 
     assert result.exit_code == 0
     assert result.stdout == '--help'
@@ -241,9 +239,8 @@ async def test_bash_command_errors_suggest_json_for_multi_parameter_positionals(
         """Add two numbers."""
         return a + b
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'add 2 5'}))
+    async with open_bash(toolset) as shell:
+        result = await shell.run('add 2 5')
 
     assert result.exit_code == 2
     assert 'add: this command has multiple parameters.' in result.stderr
@@ -259,9 +256,8 @@ async def test_bash_validation_errors_are_cli_style() -> None:
         """Repeat a counter value."""
         return str(count)
 
-    async with JustBashToolset(toolset) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'repeat --count nope'}))
+    async with open_bash(toolset) as shell:
+        result = await shell.run('repeat --count nope')
 
     assert result.exit_code == 2
     assert 'repeat: invalid arguments.' in result.stderr
@@ -280,7 +276,7 @@ async def test_bash_wrapper_errors_when_tool_has_reserved_help_argument() -> Non
     wrapped = JustBashToolset(toolset)
 
     with pytest.raises(UserError, match='reserved --help help flag'):
-        await wrapped.get_tools(build_run_context(None))
+        await wrapped.get_tools(build_run_context())
 
 
 async def test_bash_wrapper_can_rename_help_argument_for_shell_commands() -> None:
@@ -291,11 +287,8 @@ async def test_bash_wrapper_can_rename_help_argument_for_shell_commands() -> Non
         """Explain a topic."""
         return f'{topic}:{help}'
 
-    async with JustBashToolset(
-        toolset,
-        rename_help_argument='{tool_name}_{arg_name}',
-    ) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
+    async with JustBashToolset(toolset, rename_help_argument='{tool_name}_{arg_name}') as wrapped:
+        manager = await ToolManager[None](wrapped).for_run_step(build_run_context())
         describe_result = await manager.handle_call(
             ToolCallPart(tool_name='bash_describe_tool', args={'name': 'explain'})
         )
@@ -321,9 +314,8 @@ async def test_bash_wrapper_supports_custom_help_flag_name() -> None:
         """Greet a user."""
         return f'hello, {name}'
 
-    async with JustBashToolset(toolset, help_flag_name='usage') as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        result = await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': 'greet --usage'}))
+    async with open_bash(toolset, help_flag_name='usage') as shell:
+        result = await shell.run('greet --usage')
 
     assert result.exit_code == 0
     assert '--usage' in result.stdout
@@ -364,6 +356,27 @@ async def test_bash_capability_exposes_bash_public_tools_to_agent_by_default() -
     assert 'greet' in tool_names
 
 
+async def test_bash_capability_forwards_wrapper_configuration() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain
+    def echo(text: str) -> str:
+        """Echo text."""
+        return text
+
+    capability = JustBash(tool_name='shellbox', command_prefix='cmd_', helper_prefix='jb_')
+    wrapped = capability.get_wrapper_toolset(toolset)
+
+    assert isinstance(wrapped, JustBashToolset)
+
+    async with wrapped:
+        shell = await build_shell_harness(wrapped)
+        result = await shell.run('jb_list_tools && cmd_echo hi')
+
+    assert 'cmd_echo' in result.stdout
+    assert result.stdout.strip().endswith('hi')
+
+
 async def test_bash_capability_supports_shell_only_mode() -> None:
     model = TestModel(call_tools=[])
     agent = Agent(model, capabilities=[JustBash(expose_wrapped_tools=False)])
@@ -386,12 +399,9 @@ async def test_bash_capability_supports_shell_only_mode() -> None:
 
 
 async def test_bash_reset_session_clears_filesystem() -> None:
-    async with JustBashToolset(FunctionToolset[None]()) as wrapped:
-        manager = await ToolManager[None](wrapped).for_run_step(build_run_context(None))
-        await manager.handle_call(ToolCallPart(tool_name='bash', args={'script': "printf 'hello' > note.txt"}))
-        result = await manager.handle_call(
-            ToolCallPart(tool_name='bash', args={'script': 'cat note.txt', 'reset_session': True})
-        )
+    async with open_bash(FunctionToolset[None]()) as shell:
+        await shell.run("printf 'hello' > note.txt")
+        result = await shell.run('cat note.txt', reset_session=True)
 
     assert result.exit_code != 0
     assert 'note.txt' in result.stderr

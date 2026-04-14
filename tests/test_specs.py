@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import yaml
 from just_bash import ExecutionLimits, FileInit, InMemoryFs, JavaScriptConfig, LazyFile
@@ -34,7 +35,20 @@ EXECUTION_LIMITS = ExecutionLimits(
     max_source_depth=None,
 )
 
-ALL_SPEC_ARGS: dict[str, Any] = {
+SpecSampleValue: TypeAlias = (
+    bool
+    | int
+    | str
+    | ExecutionLimits
+    | FileInit
+    | InMemoryFs
+    | JavaScriptConfig
+    | LazyFile
+    | list['SpecSampleValue']
+    | dict[str, 'SpecSampleValue']
+)
+
+SPEC_SAMPLE_ARGS: dict[str, SpecSampleValue] = {
     'tool_name': 'shellbox',
     'command_prefix': 'cmd_',
     'helper_prefix': 'bash_',
@@ -68,11 +82,32 @@ ALL_SPEC_ARGS: dict[str, Any] = {
 
 
 def _extract_just_bash(agent: Agent[Any, Any]) -> JustBash[Any]:
-    leaves = collect_leaves(agent.root_capability)
-    for leaf in leaves:
+    for leaf in collect_leaves(agent.root_capability):
         if isinstance(leaf, JustBash):
             return leaf
     raise AssertionError('JustBash capability not found in agent root capability tree')
+
+
+def _serialize_just_bash(arguments: Mapping[str, SpecSampleValue]) -> object:
+    return CapabilitySpec(
+        name='JustBash',
+        arguments=dict(arguments),
+    ).model_dump(mode='python', context={'use_short_form': True})
+
+
+def _build_agent_with_capabilities(*capabilities: object) -> Agent[Any, Any]:
+    return Agent.from_spec(
+        {
+            'model': 'test',
+            'capabilities': list(capabilities),
+        },
+        custom_capability_types=[JustBash],
+    )
+
+
+def _assert_capability_fields(capability: JustBash[Any], expected_fields: Mapping[str, SpecSampleValue]) -> None:
+    for field_name, expected_value in expected_fields.items():
+        assert getattr(capability, field_name) == expected_value
 
 
 def test_just_bash_has_a_serialization_name() -> None:
@@ -80,7 +115,7 @@ def test_just_bash_has_a_serialization_name() -> None:
 
 
 def test_all_just_bash_fields_are_covered_by_spec_roundtrip_samples() -> None:
-    assert set(ALL_SPEC_ARGS) == {field.name for field in fields(JustBash)}
+    assert set(SPEC_SAMPLE_ARGS) == {field.name for field in fields(JustBash)}
 
 
 def test_from_spec_signature_covers_all_just_bash_fields() -> None:
@@ -93,52 +128,33 @@ def test_from_spec_signature_covers_all_just_bash_fields() -> None:
 
 
 def test_agent_from_spec_supports_all_just_bash_arguments() -> None:
-    serialized_capability = CapabilitySpec(
-        name='JustBash',
-        arguments=ALL_SPEC_ARGS,
-    ).model_dump(mode='python', context={'use_short_form': True})
-
-    agent = Agent.from_spec(
-        {
-            'model': 'test',
-            'capabilities': [serialized_capability],
-        },
-        custom_capability_types=[JustBash],
-    )
+    agent = _build_agent_with_capabilities(_serialize_just_bash(SPEC_SAMPLE_ARGS))
 
     capability = _extract_just_bash(agent)
-    for field_name, expected in ALL_SPEC_ARGS.items():
-        assert getattr(capability, field_name) == expected
+    _assert_capability_fields(capability, SPEC_SAMPLE_ARGS)
 
 
 def test_agent_from_spec_supports_default_just_bash() -> None:
-    agent = Agent.from_spec(
-        {
-            'model': 'test',
-            'capabilities': ['JustBash'],
-        },
-        custom_capability_types=[JustBash],
-    )
+    agent = _build_agent_with_capabilities('JustBash')
 
     capability = _extract_just_bash(agent)
     assert capability == JustBash()
 
 
 def test_agent_from_file_yaml_supports_all_just_bash_arguments(tmp_path: Path) -> None:
-    serialized_capability = CapabilitySpec(
-        name='JustBash',
-        arguments=ALL_SPEC_ARGS,
-    ).model_dump(mode='python', context={'use_short_form': True})
-
-    spec = {
-        'model': 'test',
-        'capabilities': [serialized_capability],
-    }
     spec_path = tmp_path / 'agent.yaml'
-    spec_path.write_text(yaml.safe_dump(spec, sort_keys=False), encoding='utf-8')
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                'model': 'test',
+                'capabilities': [_serialize_just_bash(SPEC_SAMPLE_ARGS)],
+            },
+            sort_keys=False,
+        ),
+        encoding='utf-8',
+    )
 
     agent = Agent.from_file(spec_path, custom_capability_types=[JustBash])
 
     capability = _extract_just_bash(agent)
-    for field_name, expected in ALL_SPEC_ARGS.items():
-        assert getattr(capability, field_name) == expected
+    _assert_capability_fields(capability, SPEC_SAMPLE_ARGS)

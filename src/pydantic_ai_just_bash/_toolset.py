@@ -14,6 +14,7 @@ from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.tools import ToolDefinition, matches_tool_selector
 from pydantic_ai.toolsets import AbstractToolset, ToolsetTool, WrapperToolset
 
+from ._config import JustBashToolsetConfig
 from ._json_schema import copy_json_object, required_names, schema_properties
 from ._shell_cli import (
     ShellCliError,
@@ -310,30 +311,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
     def visit_and_replace(
         self, visitor: Callable[[AbstractToolset[AgentDepsT]], AbstractToolset[AgentDepsT]]
     ) -> AbstractToolset[AgentDepsT]:
-        return self.__class__(
-            wrapped=self.wrapped.visit_and_replace(visitor),
-            tool_name=self.tool_name,
-            command_prefix=self.command_prefix,
-            helper_prefix=self.helper_prefix,
-            exposed_tools=self.exposed_tools,
-            expose_wrapped_tools=self.expose_wrapped_tools,
-            instructions=self.instructions,
-            help_flag_name=self.help_flag_name,
-            rename_help_argument=self.rename_help_argument,
-            files=self.files,
-            env=self.env,
-            cwd=self.cwd,
-            fs=self.fs,
-            execution_limits=self.execution_limits,
-            python=self.python,
-            javascript=self.javascript,
-            commands=self.commands,
-            network=self.network,
-            process_info=self.process_info,
-            node_command=self.node_command,
-            js_entry=self.js_entry,
-            package_json=self.package_json,
-        )
+        return self._toolset_config().build_toolset(self.wrapped.visit_and_replace(visitor))
 
     async def _run_bash(
         self,
@@ -447,22 +425,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
 
         if self._bash is None:
             self._bound_tool_commands = set(shell_state.bindings_by_command)
-            self._bash = AsyncBash(
-                files=self.files,
-                env=self.env,
-                cwd=self.cwd,
-                fs=self.fs,
-                execution_limits=self.execution_limits,
-                python=self.python,
-                javascript=self.javascript,
-                commands=self.commands,
-                network=self.network,
-                process_info=self.process_info,
-                node_command=self.node_command,
-                js_entry=self.js_entry,
-                package_json=self.package_json,
-                custom_commands=self._custom_commands(),
-            )
+            self._bash = self._toolset_config().build_bash(custom_commands=self._custom_commands())
 
         return self._bash
 
@@ -903,9 +866,8 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
     ) -> dict[str, Any]:
         return {binding.shell_to_actual_arg_names.get(key, key): value for key, value in shell_args.items()}
 
-    def _copy_for_run(self, wrapped: AbstractToolset[AgentDepsT]) -> JustBashToolset[AgentDepsT]:
-        return self.__class__(
-            wrapped=wrapped,
+    def _toolset_config(self) -> JustBashToolsetConfig[AgentDepsT]:
+        return JustBashToolsetConfig(
             tool_name=self.tool_name,
             command_prefix=self.command_prefix,
             helper_prefix=self.helper_prefix,
@@ -928,6 +890,9 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             js_entry=self.js_entry,
             package_json=self.package_json,
         )
+
+    def _copy_for_run(self, wrapped: AbstractToolset[AgentDepsT]) -> JustBashToolset[AgentDepsT]:
+        return self._toolset_config().build_toolset(wrapped)
 
     def _require_shell_state(self) -> _ShellState[AgentDepsT]:
         if self._shell_state is None:  # pragma: no cover
