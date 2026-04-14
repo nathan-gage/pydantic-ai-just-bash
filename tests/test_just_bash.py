@@ -212,6 +212,42 @@ async def test_shell_helpers_use_bash_names() -> None:
     assert 'AAPL' in search_result.stdout
 
 
+async def test_hidden_shell_commands_stay_out_of_shell_introspection_until_discovered() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain(defer_loading=True)
+    def stock_lookup(symbol: str) -> str:
+        """Look up a stock price by ticker symbol."""
+        return f'{symbol}=150.00'
+
+    async with open_bash(toolset) as shell:
+        before_discovery = await shell.run('type -t stock_lookup >/dev/null || printf missing')
+        hidden_call = await shell.run('stock_lookup AAPL')
+        discovered_call = await shell.run('bash_search_tools stock >/dev/null && stock_lookup AAPL')
+        after_discovery = await shell.run('type -t stock_lookup')
+
+    assert before_discovery.stdout == 'missing'
+    assert hidden_call.exit_code == 127
+    assert 'command is hidden until it is discovered' in hidden_call.stderr
+    assert discovered_call.stdout == 'AAPL=150.00'
+    assert after_discovery.stdout.strip() in {'alias', 'function'}
+
+
+async def test_visible_shell_commands_still_work_when_command_rewrite_falls_back() -> None:
+    toolset = FunctionToolset[None]()
+
+    @toolset.tool_plain
+    def greet(name: str) -> str:
+        """Greet a user."""
+        return f'hello, {name}'
+
+    async with open_bash(toolset) as shell:
+        result = await shell.run('[[ 1 == 1 ]] && greet world')
+
+    assert result.exit_code == 0
+    assert result.stdout == 'hello, world'
+
+
 async def test_bash_bound_commands_support_help_flag() -> None:
     toolset = FunctionToolset[None]()
 

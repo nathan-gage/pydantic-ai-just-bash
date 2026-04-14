@@ -5,6 +5,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Generic
 
+import bashlex
+import bashlex.errors as bashlex_errors
 from just_bash import AsyncBash, AsyncCustomCommandContext, JavaScriptConfig, NetworkConfig, ProcessInfo
 from pydantic import BaseModel, Field, TypeAdapter
 from pydantic_ai import Tool
@@ -347,7 +349,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
 
         bash = await self._ensure_bash(shell_state, reset_session=reset_session)
         result = await bash.exec(
-            self._script_with_bound_command_aliases(shell_state, script),
+            self._script_with_shell_command_prelude(shell_state, script),
             stdin=stdin,
             cwd=cwd,
             env=env,
@@ -807,20 +809,88 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
             description=binding.shell_tool_def.description,
         )
 
-    def _script_with_bound_command_aliases(
+    def _script_with_shell_command_prelude(
         self,
         shell_state: _ShellState[AgentDepsT],
         script: str,
     ) -> str:
-        if not shell_state.bindings_by_command:
-            return script
+        rewritten_script = self._rewrite_bound_command_invocations(shell_state, script)
+        visible_bindings = self._visible_bindings(shell_state)
+        if not visible_bindings:
+            return rewritten_script
 
         prelude_lines = ['shopt -s expand_aliases']
-        for command_name in sorted(shell_state.bindings_by_command):
-            alias_name = shlex.quote(command_name)
-            alias_target = shlex.quote(shlex.join([self.call_tool_name, command_name]))
+        for binding in visible_bindings:
+            alias_name = shlex.quote(binding.command_name)
+            alias_target = shlex.quote(shlex.join([self.call_tool_name, binding.command_name]))
             prelude_lines.append(f'alias {alias_name}={alias_target}')
-        return '\n'.join([*prelude_lines, script])
+        return '\n'.join([*prelude_lines, rewritten_script])
+
+    def _rewrite_bound_command_invocations(
+        self,
+        shell_state: _ShellState[AgentDepsT],
+        script: str,
+    ) -> str:
+        command_names = frozenset(shell_state.bindings_by_command)
+        if not command_names:
+            return script
+
+        try:
+            roots = bashlex.parse(script)
+        except (bashlex_errors.ParsingError, NotImplementedError):
+            return script
+
+        insertions: list[tuple[int, str]] = []
+        visited: set[int] = set()
+        for root in roots:
+            self._collect_bound_command_rewrites(root, command_names, insertions, visited)
+        if not insertions:
+            return script
+
+        parts: list[str] = []
+        last_index = 0
+        for index, text in sorted(insertions, key=lambda item: item[0]):
+            parts.append(script[last_index:index])
+            parts.append(text)
+            last_index = index
+        parts.append(script[last_index:])
+        return ''.join(parts)
+
+    def _collect_bound_command_rewrites(
+        self,
+        node: Any,
+        command_names: frozenset[str],
+        insertions: list[tuple[int, str]],
+        visited: set[int],
+    ) -> None:
+        if not hasattr(node, 'kind'):
+            return
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if node.kind == 'command':
+            command_word = self._command_word_node(node)
+            if command_word is not None and command_word.word in command_names:
+                insertions.append((command_word.pos[0], f'{self.call_tool_name} '))
+
+        for value in node.__dict__.values():
+            if isinstance(value, list):
+                for item in value:
+                    self._collect_bound_command_rewrites(item, command_names, insertions, visited)
+            else:
+                self._collect_bound_command_rewrites(value, command_names, insertions, visited)
+
+    def _command_word_node(self, command_node: Any) -> Any | None:
+        for part in getattr(command_node, 'parts', []):
+            kind = getattr(part, 'kind', None)
+            if kind in {'assignment', 'redirect'}:
+                continue
+            if kind == 'word':
+                return part
+            return None
+        return None
 
     def _visible_bindings(self, shell_state: _ShellState[AgentDepsT]) -> list[_CommandBinding[AgentDepsT]]:
         return sorted(
