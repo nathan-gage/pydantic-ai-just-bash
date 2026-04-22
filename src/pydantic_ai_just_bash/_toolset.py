@@ -761,7 +761,7 @@ class JustBashToolset(WrapperToolset[AgentDepsT]):
         elif 'required' in schema:
             del schema['required']
 
-        shell_tool_def = replace(tool_def, parameters_json_schema=schema, function_signature=None)
+        shell_tool_def = replace(tool_def, parameters_json_schema=schema)
         return shell_tool_def, shell_to_actual_arg_names, actual_to_shell_arg_names
 
     def _renamed_help_argument_name(self, tool_name: str, arg_name: str) -> str:
