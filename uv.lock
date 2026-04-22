@@ -163,14 +163,14 @@ wheels = [
 
 [[package]]
 name = "just-py-bash"
-version = "2.14.2"
+version = "2.14.2.post1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/18/5c8ef4d609b2aa72a158f328271bcbfdd61f421d699218dee168bf3a2607/just_py_bash-2.14.2.tar.gz", hash = "sha256:47337143a701585b88b54f2de81bef5c66a7692e23c39050e68144d168aaec2a", size = 8578760, upload-time = "2026-04-14T18:08:43.995Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/f4/bce031478ccbb5dd772795d753df761023fbb132c13ee8fe00f87f9bfb5d/just_py_bash-2.14.2.post1.tar.gz", hash = "sha256:61c73bad1b9d5cbb9fefac2459aaedf29c2d25252cb4408f1a1e2e4af4afde49", size = 8580585, upload-time = "2026-04-14T23:31:52.221Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/07/0e/d1c3d5a68e6bee4b014fc5b6d4a3f014e4dbe41ec993bc3ec5e0825dc5ce/just_py_bash-2.14.2-py3-none-any.whl", hash = "sha256:7c7665c9195325d5e8187db3f63b00d7aeb574119335074b0d328f722d65cf4d", size = 8834613, upload-time = "2026-04-14T18:08:41.495Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/96/72088dc7b8a908678c542b8de6afaeb988ec2cc400c8e3085445044d455d/just_py_bash-2.14.2.post1-py3-none-any.whl", hash = "sha256:540da92113b5dc07f62bd0e74d4ec4f383d7a9da3152c6c404a83da240ffdb7e", size = 8836019, upload-time = "2026-04-14T23:31:49.578Z" },
 ]
 
 [[package]]
